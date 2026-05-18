@@ -1,0 +1,3566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Household">
+<meta name="theme-color" content="#f7f1e3">
+<link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Household%22%2C%22short_name%22%3A%22Household%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f7f1e3%22%2C%22theme_color%22%3A%22%23f7f1e3%22%2C%22share_target%22%3A%7B%22action%22%3A%22.%2F%22%2C%22method%22%3A%22GET%22%2C%22params%22%3A%7B%22title%22%3A%22title%22%2C%22text%22%3A%22text%22%2C%22url%22%3A%22url%22%7D%7D%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%3Bcharset%3Dutf-8%2C%253Csvg%2520xmlns%253D%2522http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2522%2520viewBox%253D%25220%25200%2520192%2520192%2522%253E%253Crect%2520width%253D%2522192%2522%2520height%253D%2522192%2522%2520rx%253D%252242%2522%2520fill%253D%2522%2523f7f1e3%2522%252F%253E%253Cpath%2520d%253D%2522M50%252070%2520L96%252050%2520L142%252070%2520L142%2520140%2520L96%2520120%2520L50%2520140%2520Z%2522%2520fill%253D%2522none%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%2520stroke-linejoin%253D%2522round%2522%252F%253E%253Cpath%2520d%253D%2522M96%252050%2520L96%2520120%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%252F%253E%253Ccircle%2520cx%253D%252272%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%25232c3a5e%2522%252F%253E%253Ccircle%2520cx%253D%2522120%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%2523c14d3c%2522%252F%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%23f7f1e3'/><path d='M46 66 L90 46 L134 66 L134 132 L90 112 L46 132 Z' fill='none' stroke='%231c2820' stroke-width='3' stroke-linejoin='round'/><path d='M90 46 L90 112' stroke='%231c2820' stroke-width='3'/><circle cx='68' cy='89' r='5' fill='%232c3a5e'/><circle cx='112' cy='89' r='5' fill='%23c14d3c'/></svg>">
+<title>Household</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..600&family=Inter+Tight:wght@300..600&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   HOUSEHOLD · design system v2 — "Field guide"
+   Aged ivory · forest ink · indigo · pressed-flower coral · moss
+============================================================ */
+:root {
+  /* Paper & ink */
+  --paper: #f7f1e3;        /* aged ivory */
+  --paper-2: #efe8d4;      /* slightly darker for surfaces */
+  --paper-3: #e4dbc2;      /* edges, separators */
+  --card: #fdf9ed;         /* page-of-a-book white */
+  --ink: #1c2820;          /* forest dark, not pure black */
+  --ink-2: #38463c;        /* sub-headings */
+  --ink-3: #6d7669;        /* body muted */
+  --ink-4: #a09a85;        /* hint, eyebrow */
+  --line: rgba(28,40,32,0.10);
+  --line-2: rgba(28,40,32,0.18);
+
+  /* Member accents */
+  --indigo: #2c3a5e;        /* Lachlan default */
+  --indigo-soft: #d4dae6;
+  --indigo-deep: #1c2742;
+  --coral: #c14d3c;         /* Christine default */
+  --coral-soft: #f0d4cc;
+  --coral-deep: #8a3328;
+
+  /* Semantic */
+  --moss: #5a7244;          /* done, success */
+  --moss-soft: #d8e1c8;
+  --thistle: #8e6f9c;       /* attention */
+  --rust: #a04e1e;          /* warning */
+  --bramble: #7a2b2b;       /* danger */
+
+  /* Active accent (set per-member via data-member attr) */
+  --accent: var(--indigo);
+  --accent-soft: var(--indigo-soft);
+  --accent-deep: var(--indigo-deep);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  --ease-settle: cubic-bezier(.22,.6,.36,1);
+  --ease-quick: cubic-bezier(.4,0,.2,1);
+  --dur-fast: 180ms;
+  --dur: 240ms;
+  --dur-slow: 360ms;
+}
+
+/* member accent override — set when user identifies as a/b */
+[data-member="a"] {
+  --accent: var(--coral);
+  --accent-soft: var(--coral-soft);
+  --accent-deep: var(--coral-deep);
+}
+[data-member="b"] {
+  --accent: var(--indigo);
+  --accent-soft: var(--indigo-soft);
+  --accent-deep: var(--indigo-deep);
+}
+
+[data-theme="dark"] {
+  --paper: #161a17;
+  --paper-2: #1d2220;
+  --paper-3: #262c29;
+  --card: #1d2220;
+  --ink: #e8e4d4;
+  --ink-2: #c5c2b1;
+  --ink-3: #8e9285;
+  --ink-4: #5e6259;
+  --line: rgba(232,228,212,0.08);
+  --line-2: rgba(232,228,212,0.16);
+  --indigo-soft: #2a3447;
+  --coral-soft: #4a2d27;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: 'Inter Tight', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+input, button, textarea, select {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+button { cursor: pointer; }
+input, textarea { -webkit-appearance: none; appearance: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   LAYOUT
+============================================================ */
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding-bottom: 84px;
+  padding-top: env(safe-area-inset-top);
+  position: relative;
+}
+
+.screen { display: none; padding: 16px; }
+.screen.active { display: block; animation: fadeIn var(--dur) var(--ease-settle); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ============================================================
+   TYPOGRAPHY
+============================================================ */
+.serif { font-family: 'Fraunces', Georgia, serif; }
+.display { font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 300; letter-spacing: -0.025em; line-height: 1.1; color: var(--ink); }
+.display em { font-style: italic; color: var(--accent); font-weight: 400; }
+.h2 { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 400; letter-spacing: -0.01em; color: var(--ink); }
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 500;
+}
+.muted { color: var(--ink-3); }
+.tiny { font-size: 12px; color: var(--ink-3); }
+
+/* ============================================================
+   AUTH GATE
+============================================================ */
+.gate {
+  position: fixed;
+  inset: 0;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  z-index: 100;
+}
+.gate-inner {
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+}
+.gate-logo {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+.gate-logo .d { width: 28px; height: 28px; border-radius: 50%; }
+.gate-logo .d:first-child { background: var(--coral); }
+.gate-logo .d:last-child { background: var(--indigo); }
+.gate-title { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 300; letter-spacing: -0.02em; margin-bottom: 8px; }
+.gate-sub { color: var(--ink-3); margin-bottom: 28px; font-size: 14px; }
+.gate-form { display: flex; flex-direction: column; gap: 10px; }
+.gate-input {
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-size: 16px;
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+}
+.gate-input:focus { border-color: var(--accent); }
+.gate-button {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  font-weight: 500;
+  font-size: 15px;
+  transition: opacity var(--dur-fast);
+}
+.gate-button:active { opacity: 0.85; }
+.gate-button:disabled { opacity: 0.5; }
+.gate-toggle {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.gate-toggle a { color: var(--accent); text-decoration: none; }
+.gate-error {
+  background: rgba(156,56,56,0.08);
+  color: var(--bramble);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* ============================================================
+   HEADER (deprecated couple strip removed)
+============================================================ */
+
+/* ============================================================
+   IDENTITY PICKER (first launch on a device)
+============================================================ */
+.id-picker { padding: 0; width: 100%; max-width: 360px; }
+.id-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 14px;
+}
+.id-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  text-align: center;
+  margin-bottom: 6px;
+  line-height: 1.1;
+}
+.id-sub {
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  margin-bottom: 30px;
+}
+.id-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.id-tile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--dur);
+  text-align: left;
+  width: 100%;
+}
+.id-tile:active { transform: scale(0.98); }
+.id-tile-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  color: white;
+  font-weight: 400;
+}
+.id-tile.a .id-tile-mark { background: var(--coral); }
+.id-tile.b .id-tile-mark { background: var(--indigo); }
+.id-tile-info { flex: 1; min-width: 0; }
+.id-tile-name {
+  font-family: 'Fraunces', serif;
+  font-size: 19px;
+  font-weight: 400;
+  color: var(--ink);
+  margin-bottom: 2px;
+  letter-spacing: -0.01em;
+}
+.id-tile-meta { font-size: 12px; color: var(--ink-3); }
+
+/* ============================================================
+   PARTNER AMBIENT LINE (replaces couple strip)
+============================================================ */
+.partner-ambient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  padding: 4px 2px 14px;
+}
+.partner-ambient .pa-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--paper-3);
+  border: 1px solid var(--line-2);
+  flex-shrink: 0;
+}
+.partner-ambient .pa-dot.ok { background: var(--moss); border-color: var(--moss); }
+.partner-ambient .pa-name { color: var(--ink-2); font-weight: 500; }
+
+/* ============================================================
+   CARDS
+============================================================ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  transition: all var(--dur-fast);
+}
+.card.tappable { cursor: pointer; }
+.card.tappable:active { transform: scale(0.995); background: var(--paper-2); }
+.card-hero {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  margin-bottom: 10px;
+}
+.card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.card-eyebrow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.card-big { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 400; letter-spacing: -0.005em; line-height: 1.25; color: var(--ink); }
+.card-meta { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+.card-action {
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--paper-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  transition: all var(--dur-fast);
+}
+.card-action:active { background: var(--paper-3); }
+.card-action.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* ============================================================
+   GREETING
+============================================================ */
+.greeting { padding: 8px 0 16px; }
+.greeting .display { margin-bottom: 4px; }
+.greeting-sub {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.01em;
+}
+.greeting-sub .pip { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin: 0 8px 2px; vertical-align: middle; }
+
+/* ============================================================
+   WEEK STRIP / DOTS
+============================================================ */
+.week-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 10px;
+}
+.week-day {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-radius: var(--radius-sm);
+}
+.week-day.today { background: var(--paper-2); }
+.week-day .l { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4); font-weight: 500; }
+.week-day .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--paper-3);
+  border: 1px solid var(--line-2);
+  transition: all var(--dur);
+}
+.week-day .dot.planned { background: var(--paper-2); border-color: var(--line-2); }
+.week-day .dot.done { background: var(--accent); border-color: var(--accent); }
+
+/* ============================================================
+   SPARKLINE
+============================================================ */
+.spark-wrap { padding: 8px 0 0; }
+.spark-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.spark-num { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 300; letter-spacing: -0.02em; }
+.spark-num .u { font-family: 'Inter Tight', sans-serif; font-size: 13px; color: var(--ink-3); margin-left: 4px; font-weight: 400; }
+.spark-delta { font-size: 12px; color: var(--ink-3); }
+.spark-delta.down { color: var(--moss); }
+.spark-svg { width: 100%; height: 50px; display: block; margin-top: 4px; }
+.spark-svg path { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.spark-svg .area { fill: var(--accent-soft); opacity: 0.4; stroke: none; }
+
+/* ============================================================
+   BUTTONS
+============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  transition: all var(--dur-fast);
+}
+.btn:active { transform: scale(0.98); }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.accent { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.ghost { background: transparent; border-color: var(--line); }
+.btn.danger { color: var(--bramble); }
+.btn.block { width: 100%; }
+.btn-row { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ============================================================
+   TAB BAR
+============================================================ */
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(251,248,243,0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  z-index: 50;
+}
+[data-theme="dark"] .tabbar { background: rgba(19,17,13,0.92); }
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 16px;
+  color: var(--ink-4);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  transition: color var(--dur-fast);
+}
+.tab svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.tab.active { color: var(--accent); }
+
+/* ============================================================
+   SUB-TABS (segmented)
+============================================================ */
+.segmented {
+  display: flex;
+  background: var(--paper-2);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+}
+.segmented button {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  border-radius: 6px;
+  transition: all var(--dur-fast);
+}
+.segmented button.active {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(31,27,21,0.06);
+}
+
+/* ============================================================
+   RECIPE GRID
+============================================================ */
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.recipe-tile {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--dur-fast);
+  display: flex;
+  flex-direction: column;
+}
+.recipe-tile:active { transform: scale(0.98); }
+.recipe-img {
+  aspect-ratio: 1.2/1;
+  background: var(--paper-2);
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+.recipe-img.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-4);
+}
+.recipe-img.empty svg { width: 28px; height: 28px; stroke: currentColor; stroke-width: 1; fill: none; }
+.recipe-fav {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 24px; height: 24px;
+  background: rgba(251,248,243,0.9);
+  backdrop-filter: blur(4px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.recipe-fav svg { width: 12px; height: 12px; fill: var(--accent); stroke: var(--accent); }
+.recipe-info { padding: 10px 12px 12px; flex: 1; display: flex; flex-direction: column; }
+.recipe-title { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 400; line-height: 1.2; color: var(--ink); margin-bottom: 4px; }
+.recipe-meta { font-size: 11px; color: var(--ink-3); margin-top: auto; }
+.recipe-add-tile {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  padding: 32px 12px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 140px;
+  transition: all var(--dur-fast);
+}
+.recipe-add-tile:active { background: var(--paper-2); }
+.recipe-add-tile svg { width: 24px; height: 24px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+
+/* ============================================================
+   SHEET (bottom modal)
+============================================================ */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31,27,21,0.4);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur);
+}
+.sheet-overlay.open { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 100%);
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  background: var(--paper);
+  border-radius: 22px 22px 0 0;
+  z-index: 201;
+  transition: transform var(--dur-slow) var(--ease-settle);
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.sheet.open { transform: translate(-50%, 0); }
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: var(--line-2);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+  flex-shrink: 0;
+}
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px 8px;
+  flex-shrink: 0;
+}
+.sheet-title { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 400; }
+.sheet-close {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--ink-2);
+}
+.sheet-body {
+  padding: 8px 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+   FORM ELEMENTS
+============================================================ */
+.field { margin-bottom: 14px; }
+.field-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.input, .textarea, .select {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  color: var(--ink);
+  transition: border-color var(--dur-fast);
+}
+.input:focus, .textarea:focus, .select:focus { border-color: var(--accent); }
+.textarea { min-height: 80px; resize: vertical; font-family: inherit; }
+.select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2375695a' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+.input-row { display: flex; gap: 8px; }
+.input-row > * { flex: 1; }
+
+/* chips for select */
+.chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 7px 12px;
+  border-radius: var(--radius-full);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: all var(--dur-fast);
+}
+.chip.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* stepper */
+.stepper {
+  display: flex;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  width: fit-content;
+}
+.stepper button { padding: 10px 14px; color: var(--ink-2); font-size: 18px; }
+.stepper button:active { background: var(--paper-2); }
+.stepper .v { padding: 0 12px; font-weight: 500; min-width: 40px; text-align: center; font-size: 15px; }
+
+/* ============================================================
+   INGREDIENT EDITOR
+============================================================ */
+.ing-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 70px 28px;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+.ing-row input, .ing-row select {
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.ing-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-4);
+  font-size: 18px;
+  padding: 4px;
+  border-radius: 4px;
+}
+.ing-remove:active { background: var(--paper-2); }
+.ing-add {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   WEEK PLAN
+============================================================ */
+.day-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.day-card.today { border-color: var(--accent); }
+.day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.day-name { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 400; }
+.day-name .date { font-family: 'Inter Tight', sans-serif; font-size: 11px; color: var(--ink-3); margin-left: 6px; font-weight: 400; }
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.slot-row:last-child { border-bottom: none; }
+.slot-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4); font-weight: 500; width: 50px; flex-shrink: 0; }
+.slot-content { flex: 1; font-size: 14px; color: var(--ink-2); }
+.slot-content.empty { color: var(--ink-4); font-style: italic; }
+.slot-content.cooked { text-decoration: line-through; color: var(--ink-4); }
+.slot-action { color: var(--ink-3); font-size: 12px; padding: 4px 8px; }
+
+/* ============================================================
+   SHOPPING LIST
+============================================================ */
+.aisle { margin-bottom: 16px; }
+.aisle-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+.aisle-name { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); font-weight: 500; }
+.aisle-count { font-size: 11px; color: var(--ink-4); font-family: 'Inter Tight', sans-serif; }
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  transition: all var(--dur);
+}
+.shop-item.checked { opacity: 0.5; }
+.shop-item.checked .shop-name { text-decoration: line-through; }
+.shop-check {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--dur);
+}
+.shop-check.on { background: var(--accent); border-color: var(--accent); }
+.shop-check.on::after { content: '✓'; color: white; font-size: 12px; line-height: 1; }
+.shop-name { flex: 1; font-size: 14px; }
+.shop-qty { font-size: 12px; color: var(--ink-3); }
+
+/* ============================================================
+   EMPTY STATES
+============================================================ */
+.empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--ink-3);
+}
+.empty-title { font-family: 'Fraunces', serif; font-size: 18px; color: var(--ink-2); margin-bottom: 6px; font-weight: 400; }
+.empty-sub { font-size: 13px; margin-bottom: 16px; }
+
+/* ============================================================
+   MEMBER CARD (profile)
+============================================================ */
+.member-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  border-left: 3px solid var(--accent);
+}
+[data-member-card="b"] { border-left-color: var(--indigo); }
+[data-member-card="a"] { border-left-color: var(--coral); }
+.mc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+.mc-name { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 400; }
+.mc-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.mc-row:last-child { border-bottom: none; }
+.mc-row .k { color: var(--ink-3); }
+.mc-row .v { font-weight: 500; color: var(--ink); }
+
+/* ============================================================
+   SYNC INDICATOR
+============================================================ */
+.sync-status {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  right: 12px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur);
+}
+.sync-status.show { opacity: 1; }
+.sync-status .d { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-4); }
+.sync-status.synced .d { background: var(--moss); }
+.sync-status.syncing .d { background: var(--rust); animation: pulse 1.2s ease-in-out infinite; }
+.sync-status.offline .d { background: var(--bramble); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ============================================================
+   TOAST
+============================================================ */
+.toast {
+  position: fixed;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translate(-50%, 20px);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--dur);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ============================================================
+   CONFIG (Supabase setup screen)
+============================================================ */
+.config-card {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.config-card strong { color: var(--ink); }
+
+/* utility */
+.spacer-sm { height: 8px; }
+.spacer-md { height: 16px; }
+.spacer-lg { height: 24px; }
+.hide { display: none !important; }
+</style>
+</head>
+
+<body>
+
+<!-- ============================================================
+     CONFIG GATE — first-time setup
+============================================================ -->
+<div class="gate hide" id="configGate">
+  <div class="gate-inner">
+    <div class="gate-logo"><div class="d"></div><div class="d"></div></div>
+    <div class="gate-title">Almost there.</div>
+    <div class="gate-sub">Paste your Supabase project URL and anon public key. You only do this once.</div>
+    <div class="gate-form">
+      <input class="gate-input" id="cfgUrl" placeholder="https://xxx.supabase.co" autocomplete="off">
+      <input class="gate-input" id="cfgKey" placeholder="anon public key (eyJ…)" autocomplete="off">
+      <button class="gate-button" onclick="saveConfig()">Continue</button>
+    </div>
+    <div class="gate-error hide" id="cfgError"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     AUTH GATE
+============================================================ -->
+<div class="gate hide" id="authGate">
+  <div class="gate-inner">
+    <div class="gate-logo"><div class="d"></div><div class="d"></div></div>
+    <div class="gate-title" id="authTitle">Welcome back.</div>
+    <div class="gate-sub" id="authSub">Sign in to your household.</div>
+    <div class="gate-form">
+      <input class="gate-input" id="authEmail" type="email" placeholder="Email" autocomplete="email">
+      <input class="gate-input" id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="gate-button" id="authBtn" onclick="doAuth()">Sign in</button>
+    </div>
+    <div class="gate-error hide" id="authError"></div>
+    <div class="gate-toggle">
+      <span id="authToggleText">No household yet? </span>
+      <a href="#" onclick="toggleAuthMode(event)" id="authToggleLink">Create one</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     IDENTITY PICKER (first launch per device)
+============================================================ -->
+<div class="gate hide" id="identityGate">
+  <div class="id-picker">
+    <div class="id-eyebrow">First time on this device</div>
+    <div class="id-title">Who is this?</div>
+    <div class="id-sub">Pick once. This device remembers.</div>
+    <div class="id-tiles" id="idTiles"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     APP
+============================================================ -->
+<div class="app hide" id="app">
+
+  <div class="sync-status" id="syncStatus"><span class="d"></span><span id="syncText">Synced</span></div>
+
+  <!-- ============== TODAY ============== -->
+  <section class="screen active" id="screen-today">
+    <div class="greeting">
+      <h1 class="display" id="todayGreet">Good morning, <em>—</em>.</h1>
+      <div class="greeting-sub" id="todaySub">—</div>
+    </div>
+
+    <div class="partner-ambient" id="partnerAmbient"></div>
+
+    <div id="todayContent"></div>
+  </section>
+
+  <!-- ============== EXERCISE ============== -->
+  <section class="screen" id="screen-exercise">
+    <div class="greeting" style="padding-bottom: 8px;">
+      <h1 class="display">This <em>week</em>.</h1>
+      <div class="greeting-sub" id="exerciseSub">—</div>
+    </div>
+
+    <div id="exerciseContent"></div>
+  </section>
+
+  <!-- ============== MEALS ============== -->
+  <section class="screen" id="screen-meals">
+    <div class="greeting" style="padding-bottom: 8px;">
+      <h1 class="display">Meals</h1>
+      <div class="greeting-sub">Vault · week · shopping</div>
+    </div>
+
+    <div class="segmented">
+      <button class="active" data-meal-tab="vault" onclick="switchMealTab('vault')">Vault</button>
+      <button data-meal-tab="week" onclick="switchMealTab('week')">Week</button>
+      <button data-meal-tab="shopping" onclick="switchMealTab('shopping')">Shopping</button>
+    </div>
+
+    <div id="mealsVault"></div>
+    <div id="mealsWeek" class="hide"></div>
+    <div id="mealsShopping" class="hide"></div>
+  </section>
+
+  <!-- ============== PROFILE ============== -->
+  <section class="screen" id="screen-profile">
+    <div class="greeting" style="padding-bottom: 8px;">
+      <h1 class="display">You</h1>
+      <div class="greeting-sub">Two people, one household</div>
+    </div>
+
+    <div id="profileContent"></div>
+  </section>
+
+  <!-- ============== TAB BAR ============== -->
+  <nav class="tabbar">
+    <button class="tab active" data-screen="today" onclick="switchScreen('today')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span>Today</span>
+    </button>
+    <button class="tab" data-screen="exercise" onclick="switchScreen('exercise')">
+      <svg viewBox="0 0 24 24"><path d="M4 14h2l2-8 4 12 2-6h6"/></svg>
+      <span>Exercise</span>
+    </button>
+    <button class="tab" data-screen="meals" onclick="switchScreen('meals')">
+      <svg viewBox="0 0 24 24"><path d="M5 4v8a4 4 0 0 0 4 4v4"/><path d="M9 4v6"/><path d="M13 4v6"/><path d="M17 4c0 4-1 6-3 6 0 4 1 6 3 6v4"/></svg>
+      <span>Meals</span>
+    </button>
+    <button class="tab" data-screen="profile" onclick="switchScreen('profile')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c0-3.5 3.5-6 7-6s7 2.5 7 6"/></svg>
+      <span>You</span>
+    </button>
+  </nav>
+</div>
+
+<!-- ============================================================
+     SHEETS (modals)
+============================================================ -->
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-title" id="sheetTitle">—</div>
+    <button class="sheet-close" onclick="closeSheet()">×</button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================
+     SUPABASE
+============================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<script>
+'use strict';
+
+// ============================================================
+// STATE
+// ============================================================
+const State = {
+  client: null,
+  user: null,
+  householdId: null,
+  members: [],          // [{id, slot:'a'|'b', display_name, accent, ...}]
+  activeMemberId: null, // current viewer
+  settings: null,
+  recipes: [],
+  ingredients: {},      // {recipe_id: [ingredients]}
+  weekPlan: null,
+  weekStart: null,      // ISO date string of current week's Monday
+  workouts: [],         // current week's workouts
+  weights: [],          // all weight entries (history)
+  shoppingItems: [],
+  mealsTab: 'vault',
+  vaultCategory: 'dinner',
+  pendingWrites: [],    // offline queue
+  realtimeChannel: null,
+  isOnline: navigator.onLine,
+};
+
+// ============================================================
+// CONFIG (Supabase URL/key)
+// ============================================================
+const CFG_KEY = 'household_supabase_config_v1';
+const DEVICE_MEMBER_KEY = 'household_device_member_v1';
+
+function getConfig() {
+  try { return JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { return null; }
+}
+function setConfig(url, key) {
+  localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
+}
+
+// ============================================================
+// IDENTITY PICKER (per-device "soft pick")
+// ============================================================
+function showIdentityPicker() {
+  const root = document.getElementById('idTiles');
+  if (!root || State.members.length < 2) return;
+  root.innerHTML = State.members.map(m => {
+    const initial = (m.display_name || '?')[0].toUpperCase();
+    return `<button class="id-tile ${m.slot}" onclick="pickIdentity('${m.slot}','${m.id}')">
+      <div class="id-tile-mark">${escapeHtml(initial)}</div>
+      <div class="id-tile-info">
+        <div class="id-tile-name">${escapeHtml(m.display_name)}</div>
+        <div class="id-tile-meta">${m.life_goal_title ? escapeHtml(m.life_goal_title) : 'Tap to use this device'}</div>
+      </div>
+    </button>`;
+  }).join('');
+  document.getElementById('identityGate').classList.remove('hide');
+}
+
+function pickIdentity(slot, memberId) {
+  localStorage.setItem(DEVICE_MEMBER_KEY, slot);
+  State.activeMemberId = memberId;
+  applyMemberTheme();
+  document.getElementById('identityGate').classList.add('hide');
+  renderAll();
+}
+
+function switchDeviceIdentity() {
+  if (!confirm('Switch this device to the other person? You can switch back any time.')) return;
+  showIdentityPicker();
+}
+function saveConfig() {
+  const url = document.getElementById('cfgUrl').value.trim();
+  const key = document.getElementById('cfgKey').value.trim();
+  const err = document.getElementById('cfgError');
+  if (!url || !key) { err.textContent = 'Both fields are required.'; err.classList.remove('hide'); return; }
+  if (!url.startsWith('https://') || !url.includes('.supabase.co')) {
+    err.textContent = 'URL should look like https://xxx.supabase.co';
+    err.classList.remove('hide'); return;
+  }
+  if (!key.startsWith('eyJ')) {
+    err.textContent = 'That doesn\'t look like an anon key. It should start with "eyJ".';
+    err.classList.remove('hide'); return;
+  }
+  setConfig(url, key);
+  location.reload();
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+let authMode = 'signin';
+function toggleAuthMode(e) {
+  e && e.preventDefault();
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  document.getElementById('authTitle').textContent = authMode === 'signin' ? 'Welcome back.' : 'New household.';
+  document.getElementById('authSub').textContent = authMode === 'signin' ? 'Sign in to your household.' : 'Create your shared account.';
+  document.getElementById('authBtn').textContent = authMode === 'signin' ? 'Sign in' : 'Create household';
+  document.getElementById('authToggleText').textContent = authMode === 'signin' ? 'No household yet? ' : 'Already have one? ';
+  document.getElementById('authToggleLink').textContent = authMode === 'signin' ? 'Create one' : 'Sign in';
+  document.getElementById('authError').classList.add('hide');
+}
+
+async function doAuth() {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  const btn = document.getElementById('authBtn');
+  const err = document.getElementById('authError');
+  err.classList.add('hide');
+
+  if (!email || !pass) { err.textContent = 'Email and password required.'; err.classList.remove('hide'); return; }
+  if (pass.length < 6) { err.textContent = 'Password must be at least 6 characters.'; err.classList.remove('hide'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    let result;
+    if (authMode === 'signup') {
+      result = await State.client.auth.signUp({ email, password: pass });
+      if (result.error) throw result.error;
+    } else {
+      result = await State.client.auth.signInWithPassword({ email, password: pass });
+      if (result.error) throw result.error;
+    }
+    // session set → onAuthStateChange will fire
+  } catch (e) {
+    err.textContent = e.message || 'Something went wrong.';
+    err.classList.remove('hide');
+    btn.disabled = false;
+    btn.textContent = authMode === 'signin' ? 'Sign in' : 'Create household';
+  }
+}
+
+async function signOut() {
+  if (!confirm('Sign out on this device?')) return;
+  localStorage.removeItem(DEVICE_MEMBER_KEY);
+  await State.client.auth.signOut();
+  location.reload();
+}
+
+// ============================================================
+// HOUSEHOLD ID — fetch from JWT or from members table
+// ============================================================
+async function resolveHouseholdId() {
+  // First try JWT app_metadata (set by signup trigger)
+  const meta = State.user.app_metadata || {};
+  if (meta.household_id) return meta.household_id;
+
+  // Fallback: look up via members table. Since the trigger may set
+  // app_metadata after the first sign-in JWT was issued, we look up
+  // the household via the owner's email on first try.
+  const { data, error } = await State.client
+    .from('households')
+    .select('id')
+    .eq('owner_email', State.user.email)
+    .limit(1);
+  if (error) throw error;
+  if (data && data[0]) return data[0].id;
+
+  throw new Error('Household not found. Try signing out and back in.');
+}
+
+// ============================================================
+// INITIAL LOAD
+// ============================================================
+async function loadAll() {
+  setSync('syncing', 'Loading');
+  try {
+    State.householdId = await resolveHouseholdId();
+
+    const [members, settings, recipes, weights, workouts, weekPlan, shoppingItems] = await Promise.all([
+      State.client.from('members').select('*').eq('household_id', State.householdId).order('slot'),
+      State.client.from('settings').select('*').eq('household_id', State.householdId).single(),
+      State.client.from('recipes').select('*').eq('household_id', State.householdId).order('created_at'),
+      State.client.from('weight_entries').select('*').eq('household_id', State.householdId).order('logged_at', { ascending: false }).limit(180),
+      State.client.from('workouts').select('*').eq('household_id', State.householdId).gte('planned_for', isoDateAddDays(weekStartFor(new Date()), 0)).lte('planned_for', isoDateAddDays(weekStartFor(new Date()), 41)),
+      getOrCreateWeekPlan(weekStartFor(new Date())),
+      [],
+    ]);
+
+    State.members = members.data || [];
+    State.settings = settings.data || null;
+    State.recipes = recipes.data || [];
+    State.weights = weights.data || [];
+    State.workouts = workouts.data || [];
+    State.weekPlan = weekPlan;
+    State.weekStart = weekPlan.week_start;
+
+    // load ingredients
+    if (State.recipes.length) {
+      const { data: ings } = await State.client
+        .from('ingredients')
+        .select('*')
+        .in('recipe_id', State.recipes.map(r => r.id))
+        .order('sort_order');
+      State.ingredients = {};
+      (ings || []).forEach(i => {
+        if (!State.ingredients[i.recipe_id]) State.ingredients[i.recipe_id] = [];
+        State.ingredients[i.recipe_id].push(i);
+      });
+    }
+
+    // load shopping items for current week
+    const { data: shop } = await State.client
+      .from('shopping_items')
+      .select('*')
+      .eq('week_plan_id', State.weekPlan.id)
+      .order('aisle')
+      .order('sort_order');
+    State.shoppingItems = shop || [];
+
+    // Resolve active member from device-bound localStorage
+    const savedSlot = localStorage.getItem(DEVICE_MEMBER_KEY);
+    if (savedSlot === 'a' || savedSlot === 'b') {
+      const m = State.members.find(x => x.slot === savedSlot);
+      State.activeMemberId = m?.id || State.members[0]?.id;
+    } else {
+      // No identity chosen on this device yet — show picker after load completes
+      State.activeMemberId = State.members[0]?.id || null;
+    }
+    applyMemberTheme();
+
+    // realtime
+    setupRealtime();
+
+    setSync('synced', 'Synced');
+    renderAll();
+
+    // If no identity set, show picker AFTER load (so members are available)
+    if (savedSlot !== 'a' && savedSlot !== 'b' && State.members.length >= 2) {
+      showIdentityPicker();
+    }
+
+    // Quiet auto-sync of Peloton calendars (no UI noise)
+    autoSyncIfDue();
+  } catch (e) {
+    console.error(e);
+    setSync('offline', 'Error');
+    toast('Failed to load: ' + (e.message || 'unknown'));
+  }
+}
+
+async function getOrCreateWeekPlan(weekStart) {
+  const { data: existing } = await State.client
+    .from('week_plans')
+    .select('*')
+    .eq('household_id', State.householdId)
+    .eq('week_start', weekStart)
+    .maybeSingle();
+  if (existing) return existing;
+  const { data: created, error } = await State.client
+    .from('week_plans')
+    .insert({ household_id: State.householdId, week_start: weekStart, slots: {} })
+    .select()
+    .single();
+  if (error) throw error;
+  return created;
+}
+
+// ============================================================
+// REALTIME
+// ============================================================
+function setupRealtime() {
+  if (State.realtimeChannel) {
+    State.client.removeChannel(State.realtimeChannel);
+  }
+  State.realtimeChannel = State.client
+    .channel('hh:' + State.householdId)
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'shopping_items', filter: 'household_id=eq.' + State.householdId },
+      (payload) => handleRealtime('shopping_items', payload))
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'week_plans', filter: 'household_id=eq.' + State.householdId },
+      (payload) => handleRealtime('week_plans', payload))
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'workouts', filter: 'household_id=eq.' + State.householdId },
+      (payload) => handleRealtime('workouts', payload))
+    .subscribe();
+}
+
+function handleRealtime(table, payload) {
+  if (table === 'shopping_items') {
+    if (payload.eventType === 'INSERT') {
+      if (!State.shoppingItems.find(s => s.id === payload.new.id)) {
+        State.shoppingItems.push(payload.new);
+      }
+    } else if (payload.eventType === 'UPDATE') {
+      const i = State.shoppingItems.findIndex(s => s.id === payload.new.id);
+      if (i >= 0) State.shoppingItems[i] = payload.new;
+    } else if (payload.eventType === 'DELETE') {
+      State.shoppingItems = State.shoppingItems.filter(s => s.id !== payload.old.id);
+    }
+    if (State.mealsTab === 'shopping') renderShopping();
+  } else if (table === 'week_plans') {
+    if (payload.new && payload.new.id === State.weekPlan?.id) {
+      State.weekPlan = payload.new;
+      if (document.getElementById('screen-today').classList.contains('active')) renderToday();
+      if (State.mealsTab === 'week') renderWeek();
+    }
+  } else if (table === 'workouts') {
+    if (payload.eventType === 'INSERT') {
+      if (!State.workouts.find(w => w.id === payload.new.id)) State.workouts.push(payload.new);
+    } else if (payload.eventType === 'UPDATE') {
+      const i = State.workouts.findIndex(w => w.id === payload.new.id);
+      if (i >= 0) State.workouts[i] = payload.new;
+    } else if (payload.eventType === 'DELETE') {
+      State.workouts = State.workouts.filter(w => w.id !== payload.old.id);
+    }
+    renderAll();
+  }
+}
+
+// ============================================================
+// SYNC STATUS
+// ============================================================
+let syncTimeout;
+function setSync(kind, text) {
+  const el = document.getElementById('syncStatus');
+  const t = document.getElementById('syncText');
+  el.className = 'sync-status ' + kind + ' show';
+  t.textContent = text || kind;
+  clearTimeout(syncTimeout);
+  if (kind === 'synced') {
+    syncTimeout = setTimeout(() => el.classList.remove('show'), 1400);
+  }
+}
+
+window.addEventListener('online', () => { State.isOnline = true; flushPendingWrites(); });
+window.addEventListener('offline', () => { State.isOnline = false; setSync('offline', 'Offline'); });
+
+async function flushPendingWrites() {
+  // For v1 we keep this simple — pending writes mostly handled by retry-on-error within each action
+  if (State.pendingWrites.length === 0) return;
+  setSync('syncing', 'Syncing');
+  for (const fn of State.pendingWrites.splice(0)) {
+    try { await fn(); } catch (e) { console.error(e); }
+  }
+  setSync('synced', 'Synced');
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function isoDateAddDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + n);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+function weekStartFor(date) {
+  // Monday-based calendar week (used for shared week_plans + weekly count)
+  const d = new Date(date);
+  d.setHours(12, 0, 0, 0); // anchor to noon to avoid DST edges
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = (day === 0 ? -6 : 1 - day);
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function rolling7FromToday() {
+  // Returns 7 ISO date strings starting today
+  const t = todayISO();
+  return Array.from({ length: 7 }, (_, i) => isoDateAddDays(t, i));
+}
+
+// ============================================================
+// PELOTON HELPERS (isolated · no rendering dependencies)
+// ============================================================
+function detectWorkoutType(input) {
+  if (!input) return null;
+  const s = String(input).toLowerCase();
+  if (s.includes('ride') || s.includes('cycling') || s.includes('bike')) return 'ride';
+  if (s.includes('strength') || s.includes('arms') || s.includes('legs') || s.includes('core') || s.includes('upper-body') || s.includes('lower-body') || s.includes('full-body')) return 'strength';
+  if (s.includes('yoga')) return 'yoga';
+  if (s.includes('stretch')) return 'stretch';
+  if (s.includes('walk')) return 'walk';
+  if (s.includes('run') || s.includes('running')) return 'run';
+  return null;
+}
+
+function parsePelotonUrl(rawText) {
+  // Returns { url, class_id, workout_type, class_title } or null
+  if (!rawText) return null;
+  const text = String(rawText).trim();
+  const urlMatch = text.match(/https?:\/\/[^\s]+/);
+  if (!urlMatch) return null;
+  const url = urlMatch[0];
+  if (!/onepeloton\.|pelotoncycle\./i.test(url)) return null;
+
+  let parsed = null;
+  try { parsed = new URL(url); } catch { return { url, class_id: null, workout_type: null, class_title: null }; }
+
+  const path = parsed.pathname || '';
+  // Match /classes/<discipline>/<uuid>-<title-slug>  or /classes/player/<uuid>
+  // UUID is 32 hex chars with dashes or sometimes without
+  const idMatch = path.match(/([0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}|[0-9a-f]{32})/i);
+  const class_id = idMatch ? idMatch[1] : null;
+
+  // Workout type from path discipline
+  const discMatch = path.match(/\/classes\/([a-z-]+)\//i);
+  const workout_type = detectWorkoutType(discMatch ? discMatch[1] : path);
+
+  // Title slug: text after the UUID, hyphen-joined → spaces
+  let class_title = null;
+  if (idMatch) {
+    const after = path.slice(path.indexOf(idMatch[1]) + idMatch[1].length).replace(/^[-/]/, '');
+    if (after && /[a-z]/i.test(after)) {
+      class_title = after.replace(/-/g, ' ').replace(/\/+/g, ' ').trim();
+      // Title-case the first letter of each word
+      class_title = class_title.replace(/\b\w/g, c => c.toUpperCase());
+      // Strip trailing slug fragments like " V2" or numeric IDs
+      class_title = class_title.replace(/\s+\d+$/, '').trim();
+    }
+  }
+
+  return { url, class_id, workout_type, class_title };
+}
+
+function buildPelotonDeepLink(url) {
+  // Returns a best-effort iOS/Android app deep link; falls back to https URL
+  if (!url) return null;
+  // Peloton has not publicly documented universal links; the public web URL
+  // opens in-app on iOS when the Peloton app is installed. Just return it.
+  return url;
+}
+
+function formatWorkoutDisplay(w) {
+  // Build human display strings from a workout row
+  if (!w) return { primary: 'Rest day', secondary: null };
+  const type = sessionTypeLabel(w.session_type);
+  const dur = w.duration_min ? `${w.duration_min} min` : '';
+  const instructor = w.instructor || null;
+  const title = w.class_title || null;
+  let primary;
+  if (instructor && dur) primary = `${dur} ${type} — ${instructor}`;
+  else if (dur) primary = `${type} · ${dur}`;
+  else primary = type;
+  return { primary, secondary: title };
+}
+
+// ============================================================
+// ICS PARSER (minimal, handles Google Calendar VEVENTs)
+// ============================================================
+function parseICS(text) {
+  // Returns array of events: { uid, dtstart_date, summary, description, url, status }
+  if (!text || typeof text !== 'string') return [];
+  // Unfold line continuations (lines starting with space/tab continue previous)
+  const unfolded = text.replace(/\r?\n[ \t]/g, '');
+  const lines = unfolded.split(/\r?\n/);
+  const events = [];
+  let cur = null;
+  for (const line of lines) {
+    if (line === 'BEGIN:VEVENT') {
+      cur = {};
+    } else if (line === 'END:VEVENT') {
+      if (cur && cur.uid && cur.dtstart_date) events.push(cur);
+      cur = null;
+    } else if (cur) {
+      // Match KEY[;params]:VALUE
+      const m = line.match(/^([A-Z-]+)(;[^:]*)?:(.*)$/);
+      if (!m) continue;
+      const key = m[1];
+      const value = m[3];
+      if (key === 'UID') cur.uid = value;
+      else if (key === 'SUMMARY') cur.summary = unescapeICS(value);
+      else if (key === 'DESCRIPTION') cur.description = unescapeICS(value);
+      else if (key === 'URL') cur.url = value;
+      else if (key === 'STATUS') cur.status = value;
+      else if (key === 'DTSTART') {
+        // Either YYYYMMDD or YYYYMMDDTHHMMSSZ/local
+        const raw = value.replace(/[^0-9TZ]/g, '');
+        const ymd = raw.match(/^(\d{4})(\d{2})(\d{2})/);
+        if (ymd) cur.dtstart_date = `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+      }
+    }
+  }
+  return events;
+}
+
+function unescapeICS(s) {
+  return s.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+}
+
+function eventToWorkoutFields(ev) {
+  // Try to extract workout type, instructor, class_title, peloton_url, duration
+  const summary = ev.summary || '';
+  const description = ev.description || '';
+  const haystack = `${summary} ${description}`;
+
+  // Peloton URL
+  let peloton_url = null;
+  const urlMatch = haystack.match(/https?:\/\/[^\s,;]+(onepeloton|pelotoncycle)[^\s,;]*/i);
+  if (urlMatch) peloton_url = urlMatch[0].replace(/[.,;]$/, '');
+  if (!peloton_url && ev.url && /onepeloton|pelotoncycle/i.test(ev.url)) peloton_url = ev.url;
+
+  // Class id from URL (use existing parser)
+  let peloton_class_id = null;
+  let workout_type_from_url = null;
+  let title_from_url = null;
+  if (peloton_url) {
+    const p = parsePelotonUrl(peloton_url);
+    if (p) {
+      peloton_class_id = p.class_id;
+      workout_type_from_url = p.workout_type;
+      title_from_url = p.class_title;
+    }
+  }
+
+  // Duration: typical patterns "30 min", "30-minute", "45 minute"
+  let duration_min = null;
+  const durMatch = haystack.match(/(\d{1,3})[\s-]*(?:min|minute)/i);
+  if (durMatch) duration_min = parseInt(durMatch[1], 10);
+
+  // Workout type: from summary keywords or URL
+  const session_type = detectWorkoutType(haystack) || workout_type_from_url || 'ride';
+
+  // Instructor & title parsing from summary
+  // Common Peloton calendar format: "30 min Pop Ride with Bradley Rose"
+  let instructor = null;
+  let class_title = null;
+  const withMatch = summary.match(/^(.*?)\s+with\s+(.+?)$/i);
+  if (withMatch) {
+    class_title = withMatch[1].trim();
+    instructor = withMatch[2].trim();
+  } else if (title_from_url) {
+    class_title = title_from_url;
+  } else if (summary) {
+    class_title = summary;
+  }
+
+  // Strip leading duration from title since we store it separately
+  if (class_title) {
+    class_title = class_title.replace(/^\d{1,3}[\s-]*(?:min|minute)s?\s+/i, '').trim();
+  }
+
+  return {
+    session_type,
+    duration_min,
+    instructor,
+    class_title,
+    peloton_url,
+    peloton_class_id,
+  };
+}
+
+// ============================================================
+// PELOTON CALENDAR SYNC
+// ============================================================
+let _lastAutoSync = 0;
+async function syncPelotonCalendars(showFeedback) {
+  const members = State.members.filter(m => m.peloton_calendar_url);
+  if (members.length === 0) {
+    if (showFeedback) toast('No calendar URLs set — add in profile');
+    return { added: 0, cancelled: 0, errors: 0 };
+  }
+
+  if (showFeedback) setSync('syncing', 'Syncing');
+
+  const today = todayISO();
+  const horizon = isoDateAddDays(today, 21);
+  let totalAdded = 0;
+  let totalCancelled = 0;
+  let errors = 0;
+
+  for (const member of members) {
+    try {
+      const res = await fetch(member.peloton_calendar_url, { cache: 'no-store' });
+      if (!res.ok) { errors++; continue; }
+      const text = await res.text();
+      const events = parseICS(text)
+        .filter(ev => ev.dtstart_date >= today && ev.dtstart_date <= horizon);
+
+      // Reconcile per member
+      const existingByUid = {};
+      State.workouts
+        .filter(w => w.member_id === member.id && w.peloton_calendar_uid)
+        .forEach(w => { existingByUid[w.peloton_calendar_uid] = w; });
+
+      const seenUids = new Set();
+      const inserts = [];
+      const updates = [];
+
+      for (const ev of events) {
+        seenUids.add(ev.uid);
+        const fields = eventToWorkoutFields(ev);
+
+        // Treat CANCELLED status as a cancellation
+        const isCancelled = (ev.status || '').toUpperCase() === 'CANCELLED';
+
+        const existing = existingByUid[ev.uid];
+        if (existing) {
+          // Only update if planned (don't touch done/cancelled workouts you've already handled)
+          if (existing.status === 'planned' || existing.status === 'cancelled') {
+            const desiredStatus = isCancelled ? 'cancelled' : 'planned';
+            if (existing.status !== desiredStatus
+                || existing.planned_for !== ev.dtstart_date
+                || existing.duration_min !== fields.duration_min
+                || existing.class_title !== fields.class_title) {
+              updates.push({
+                id: existing.id,
+                payload: {
+                  planned_for: ev.dtstart_date,
+                  status: desiredStatus,
+                  ...fields,
+                },
+              });
+            }
+          }
+        } else if (!isCancelled) {
+          inserts.push({
+            household_id: State.householdId,
+            member_id: member.id,
+            planned_for: ev.dtstart_date,
+            status: 'planned',
+            peloton_calendar_uid: ev.uid,
+            ...fields,
+          });
+        }
+      }
+
+      // Detect locally-tracked events that vanished from the feed → mark cancelled
+      const cancellations = [];
+      for (const [uid, w] of Object.entries(existingByUid)) {
+        if (!seenUids.has(uid) && w.status === 'planned') {
+          cancellations.push(w.id);
+        }
+      }
+
+      // Apply writes
+      if (inserts.length) {
+        const { data, error } = await State.client.from('workouts').insert(inserts).select();
+        if (error) { errors++; console.error('Insert error', error); }
+        else if (data) { data.forEach(w => State.workouts.push(w)); totalAdded += data.length; }
+      }
+      for (const u of updates) {
+        const { data, error } = await State.client.from('workouts').update(u.payload).eq('id', u.id).select().single();
+        if (!error && data) {
+          const idx = State.workouts.findIndex(w => w.id === data.id);
+          if (idx >= 0) State.workouts[idx] = data;
+        } else if (error) errors++;
+      }
+      if (cancellations.length) {
+        const { error } = await State.client.from('workouts').update({ status: 'cancelled' }).in('id', cancellations);
+        if (!error) {
+          State.workouts.forEach(w => { if (cancellations.includes(w.id)) w.status = 'cancelled'; });
+          totalCancelled += cancellations.length;
+        } else errors++;
+      }
+    } catch (e) {
+      console.error('Sync error for member', member.display_name, e);
+      errors++;
+    }
+  }
+
+  if (showFeedback) {
+    if (errors > 0 && totalAdded === 0 && totalCancelled === 0) {
+      setSync('offline', 'Sync failed');
+      toast('Sync failed — check calendar URL');
+    } else {
+      setSync('synced', 'Synced');
+      const bits = [];
+      if (totalAdded) bits.push(`${totalAdded} added`);
+      if (totalCancelled) bits.push(`${totalCancelled} cancelled`);
+      if (bits.length === 0) bits.push('up to date');
+      toast(bits.join(' · '));
+    }
+  }
+
+  renderAll();
+  return { added: totalAdded, cancelled: totalCancelled, errors };
+}
+
+function autoSyncIfDue() {
+  // Run at most once every 60 seconds, silently
+  const now = Date.now();
+  if (now - _lastAutoSync < 60_000) return;
+  _lastAutoSync = now;
+  syncPelotonCalendars(false).catch(() => {});
+}
+
+// ============================================================
+// MAGIC WEEK · EXERCISE (goal-aware, rule-based filler)
+// ============================================================
+function openMagicWeekExercise() {
+  const m = activeMember();
+  if (!m) return;
+  const goal = m.goal_type || 'general';
+  const mix = m.weekly_target_mix || { ride:0, run:0, strength:0, yoga:0, walk:0, stretch:0 };
+
+  // No mix set up
+  const totalTarget = Object.values(mix).reduce((a,b) => a + (parseInt(b,10)||0), 0);
+  if (totalTarget === 0) {
+    const html = `
+      <div class="tiny" style="margin-bottom:14px;color:var(--ink-3);">
+        Set up your weekly mix in your profile first. Tell Household what a good week looks like for you (e.g. 2 rides, 1 strength, 1 walk) and Magic Week will fill the empty days.
+      </div>
+      <button class="btn primary block" onclick="closeSheet();switchScreen('profile');">Open profile</button>
+    `;
+    openSheet('Magic week', html);
+    return;
+  }
+
+  // Compute deficits using the calendar week (Mon-Sun)
+  const calWeekStart = weekStartFor(new Date());
+  const calWeekDays = Array.from({length:7}, (_,i) => isoDateAddDays(calWeekStart, i));
+  const currentWorkouts = State.workouts.filter(w =>
+    w.member_id === m.id &&
+    calWeekDays.includes(w.planned_for) &&
+    w.status !== 'cancelled'
+  );
+
+  // Count by type from existing workouts
+  const have = { ride:0, run:0, strength:0, yoga:0, walk:0, stretch:0 };
+  currentWorkouts.forEach(w => {
+    if (have[w.session_type] != null) have[w.session_type]++;
+  });
+
+  // Compute deficit
+  const deficit = {};
+  ['ride','run','strength','yoga','walk','stretch'].forEach(t => {
+    deficit[t] = Math.max(0, (parseInt(mix[t],10)||0) - have[t]);
+  });
+
+  // Identify empty days (today and forward in this calendar week)
+  const todayStr = todayISO();
+  const todayIdx = calWeekDays.indexOf(todayStr);
+  const candidateDays = todayIdx >= 0 ? calWeekDays.slice(todayIdx) : calWeekDays;
+  const emptyDays = candidateDays.filter(d =>
+    !State.workouts.some(w => w.member_id === m.id && w.planned_for === d && w.status !== 'cancelled')
+  );
+
+  if (emptyDays.length === 0) {
+    openSheet('Magic week', `<div class="empty"><div class="empty-title">Week is full</div><div class="empty-sub">Every remaining day in this week already has a session.</div></div>`);
+    return;
+  }
+
+  // Build a priority-ordered list of types to slot in, expanded by deficit count
+  const priorityOrder = goalPriority(goal);
+  const queue = [];
+  priorityOrder.forEach(t => {
+    for (let i = 0; i < deficit[t]; i++) queue.push(t);
+  });
+
+  // Match queue to empty days. Rules:
+  //  - At least one rest day per week (skip last empty day if we'd overfill)
+  //  - Don't put two strength back-to-back
+  //  - Heavy/long sessions (long run, long ride) weight toward weekend
+  //  - Variety: avoid same type two days in a row when alternatives exist
+  const plan = []; // { date, type }
+  const weekendDays = new Set(); // Sat=6, Sun=0
+  calWeekDays.forEach(d => {
+    const [yy,mm,dd] = d.split('-').map(Number);
+    const dow = new Date(yy, mm-1, dd).getDay();
+    if (dow === 0 || dow === 6) weekendDays.add(d);
+  });
+
+  // If we'd fill every empty day, reserve at least one as rest (unless deficit > empties)
+  let usableDays = emptyDays.slice();
+  if (queue.length < usableDays.length) {
+    // Leave a rest day — prefer mid-week (not Sat/Sun, not Mon)
+    const restCandidate = usableDays.find(d => !weekendDays.has(d) && d !== calWeekDays[0]);
+    if (restCandidate) usableDays = usableDays.filter(d => d !== restCandidate);
+  }
+
+  // Sort queue so that "heavy" types prefer weekend slots
+  const heavyTypes = new Set(['run','ride']);
+  const heavyFirst = queue.filter(t => heavyTypes.has(t));
+  const lightFirst = queue.filter(t => !heavyTypes.has(t));
+  // Place heavy first into weekend-preferred slots, then fill rest
+  const weekendUsable = usableDays.filter(d => weekendDays.has(d));
+  const weekdayUsable = usableDays.filter(d => !weekendDays.has(d));
+
+  // Build slots in chronological order so the plan reads naturally
+  const slotMap = {}; // date -> type
+  let hq = heavyFirst.slice();
+  let lq = lightFirst.slice();
+
+  // Fill weekend with heavy first
+  weekendUsable.forEach(d => {
+    if (hq.length) slotMap[d] = hq.shift();
+  });
+  // Fill weekdays
+  weekdayUsable.forEach(d => {
+    if (hq.length) slotMap[d] = hq.shift();
+    else if (lq.length) slotMap[d] = lq.shift();
+  });
+  // Any leftover weekend slots use light
+  weekendUsable.forEach(d => {
+    if (!slotMap[d] && lq.length) slotMap[d] = lq.shift();
+  });
+
+  // Enforce no-strength-back-to-back
+  const sorted = Object.keys(slotMap).sort();
+  for (let i = 1; i < sorted.length; i++) {
+    if (slotMap[sorted[i]] === 'strength' && slotMap[sorted[i-1]] === 'strength') {
+      // Try to swap with a non-adjacent slot
+      const swapWith = sorted.find(d =>
+        d !== sorted[i] &&
+        d !== sorted[i-1] &&
+        slotMap[d] !== 'strength' &&
+        Math.abs(sorted.indexOf(d) - i) > 1
+      );
+      if (swapWith) {
+        const tmp = slotMap[sorted[i]];
+        slotMap[sorted[i]] = slotMap[swapWith];
+        slotMap[swapWith] = tmp;
+      }
+    }
+  }
+
+  // Default durations by type
+  const defaultDur = (t) => ({ ride:30, run:30, strength:20, yoga:30, walk:30, stretch:10 })[t] || 30;
+
+  const proposed = Object.keys(slotMap).sort().map(d => ({
+    date: d,
+    type: slotMap[d],
+    duration_min: defaultDur(slotMap[d]),
+  }));
+
+  // Preview UI
+  const dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const haveBits = Object.entries(have).filter(([_,v]) => v > 0).map(([t,v]) => `${v} ${sessionTypeLabel(t).toLowerCase()}`).join(', ') || 'nothing yet';
+  const mixBits = Object.entries(mix).filter(([_,v]) => parseInt(v,10) > 0).map(([t,v]) => `${v} ${sessionTypeLabel(t).toLowerCase()}`).join(', ');
+
+  let body = `
+    <div class="tiny" style="margin-bottom:14px;line-height:1.6;">
+      <div><span style="color:var(--ink-4);">Goal:</span> ${escapeHtml(goalLabel(goal))}</div>
+      <div><span style="color:var(--ink-4);">Target mix:</span> ${escapeHtml(mixBits)}</div>
+      <div><span style="color:var(--ink-4);">Already this week:</span> ${escapeHtml(haveBits)}</div>
+    </div>
+  `;
+
+  if (proposed.length === 0) {
+    body += `<div class="empty"><div class="empty-title">Nothing to add</div><div class="empty-sub">Your week already matches your target.</div></div>`;
+    body += `<button class="btn block" onclick="closeSheet()">Close</button>`;
+    openSheet('Magic week', body);
+    return;
+  }
+
+  body += `<div class="card-eyebrow"><span class="eyebrow">Proposed</span></div>`;
+  body += proposed.map(p => {
+    const [yy,mm,dd] = p.date.split('-').map(Number);
+    const dow = new Date(yy, mm-1, dd).getDay();
+    return `<div class="day-card" style="margin-bottom:6px;">
+      <div class="day-name">${dayLabels[dow]} <span class="date">${shortDate(p.date)}</span></div>
+      <div class="card-meta" style="margin-top:2px;">${sessionTypeLabel(p.type)} · ${p.duration_min} min</div>
+    </div>`;
+  }).join('');
+
+  body += `<div class="btn-row" style="margin-top:14px;">
+    <button class="btn block" onclick="openMagicWeekExercise()">Try again</button>
+    <button class="btn primary block" onclick='commitMagicWeekExercise(${JSON.stringify(proposed).replace(/'/g,"&#39;")})'>Use this</button>
+  </div>`;
+
+  openSheet('Magic week', body);
+}
+
+function goalPriority(goal) {
+  // Higher-priority types first
+  switch (goal) {
+    case 'lose_weight': return ['ride','run','walk','strength','yoga','stretch'];
+    case 'event':       return ['run','ride','strength','walk','yoga','stretch'];
+    case 'strength':    return ['strength','ride','walk','yoga','run','stretch'];
+    case 'maintain':    return ['walk','yoga','stretch','ride','strength','run'];
+    default:            return ['ride','strength','yoga','walk','run','stretch'];
+  }
+}
+
+function goalLabel(g) {
+  return { lose_weight:'Lose weight', event:'Train for an event', general:'General fitness', strength:'Build strength', maintain:'Maintain' }[g] || 'General fitness';
+}
+
+async function commitMagicWeekExercise(proposed) {
+  closeSheet();
+  setSync('syncing', 'Saving');
+  const m = activeMember();
+  const inserts = proposed.map(p => ({
+    household_id: State.householdId,
+    member_id: m.id,
+    planned_for: p.date,
+    session_type: p.type,
+    duration_min: p.duration_min,
+    status: 'planned',
+  }));
+  const { data, error } = await State.client.from('workouts').insert(inserts).select();
+  if (error) {
+    toast('Save failed');
+    setSync('offline', 'Error');
+    return;
+  }
+  if (data) data.forEach(w => State.workouts.push(w));
+  setSync('synced', 'Saved');
+  toast(`Added ${data.length} session${data.length===1?'':'s'}`);
+  renderAll();
+}
+
+// ============================================================
+function dayLabel(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+}
+function shortDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+function formatDateLong() {
+  const d = new Date();
+  const day = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+  const m = ['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()];
+  return `${day} · ${m} ${d.getDate()}`;
+}
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Late night';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  if (h < 22) return 'Good evening';
+  return 'Late night';
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
+}
+function activeMember() {
+  return State.members.find(m => m.id === State.activeMemberId) || State.members[0];
+}
+function partnerMember() {
+  return State.members.find(m => m.id !== State.activeMemberId) || State.members[1];
+}
+function applyMemberTheme() {
+  const m = activeMember();
+  if (m) document.body.dataset.member = m.slot;
+}
+function toast(text) {
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function daysUntil(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T00:00:00');
+  const now = new Date(); now.setHours(0,0,0,0);
+  return Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+}
+
+// ============================================================
+// SCREEN SWITCHING
+// ============================================================
+function switchScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.querySelector(`.tab[data-screen="${name}"]`).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function switchMealTab(name) {
+  State.mealsTab = name;
+  document.querySelectorAll('[data-meal-tab]').forEach(b => b.classList.toggle('active', b.dataset.mealTab === name));
+  ['mealsVault','mealsWeek','mealsShopping'].forEach(id => document.getElementById(id).classList.add('hide'));
+  if (name === 'vault') { document.getElementById('mealsVault').classList.remove('hide'); renderVault(); }
+  if (name === 'week') { document.getElementById('mealsWeek').classList.remove('hide'); renderWeek(); }
+  if (name === 'shopping') { document.getElementById('mealsShopping').classList.remove('hide'); renderShopping(); }
+}
+
+// ============================================================
+// SHEET
+// ============================================================
+function openSheet(title, html) {
+  document.getElementById('sheetTitle').innerHTML = title;
+  document.getElementById('sheetBody').innerHTML = html;
+  document.getElementById('sheetOverlay').classList.add('open');
+  document.getElementById('sheet').classList.add('open');
+}
+function closeSheet() {
+  document.getElementById('sheetOverlay').classList.remove('open');
+  document.getElementById('sheet').classList.remove('open');
+  setTimeout(() => { document.getElementById('sheetBody').innerHTML = ''; }, 360);
+}
+
+// ============================================================
+// RENDER · TODAY (dashboard)
+// ============================================================
+function renderAll() {
+  renderPartnerAmbient();
+  renderToday();
+  renderExercise();
+  renderVault();
+  renderProfile();
+  if (State.mealsTab === 'week') renderWeek();
+  if (State.mealsTab === 'shopping') renderShopping();
+}
+
+function renderPartnerAmbient() {
+  const wrap = document.getElementById('partnerAmbient');
+  if (!wrap) return;
+  const partner = partnerMember();
+  if (!partner) { wrap.innerHTML = ''; return; }
+  const today = todayISO();
+  const didWorkout = State.workouts.some(w => w.member_id === partner.id && w.planned_for === today && w.status === 'done');
+  wrap.innerHTML = `<span class="pa-dot ${didWorkout ? 'ok' : ''}"></span>
+    <span><span class="pa-name">${escapeHtml(partner.display_name)}</span> ${didWorkout ? 'moved today' : 'hasn\'t moved yet'}</span>`;
+}
+
+function renderToday() {
+  const m = activeMember();
+  if (!m) return;
+
+  // Greeting
+  document.getElementById('todayGreet').innerHTML = `${greeting()}, <em>${escapeHtml(m.display_name)}</em>.`;
+  let subParts = [formatDateLong()];
+  if (m.life_goal_title && m.life_goal_date) {
+    const days = daysUntil(m.life_goal_date);
+    if (days != null && days >= 0) subParts.push(`${escapeHtml(m.life_goal_title)} · ${days} day${days===1?'':'s'}`);
+    else if (days != null) subParts.push(`${escapeHtml(m.life_goal_title)}`);
+  } else if (m.life_goal_title) {
+    subParts.push(escapeHtml(m.life_goal_title));
+  }
+  document.getElementById('todaySub').innerHTML = subParts.join(' <span class="pip"></span> ');
+
+  const today = todayISO();
+  const tonightDinner = getSlotRecipe(today, 'dinner');
+  const todayWorkout = State.workouts.find(w => w.member_id === m.id && w.planned_for === today);
+
+  // weekly count
+  const weekStart = weekStartFor(new Date());
+  const weekDays = Array.from({length:7}, (_,i) => isoDateAddDays(weekStart, i));
+  const weekWorkouts = State.workouts.filter(w => w.member_id === m.id && weekDays.includes(w.planned_for));
+  const doneCount = weekWorkouts.filter(w => w.status === 'done').length;
+  const target = m.weekly_session_target || 4;
+
+  // latest weight
+  const myWeights = State.weights.filter(w => w.member_id === m.id);
+  const latest = myWeights[0];
+
+  let html = '';
+
+  // Tonight's dinner
+  html += `<div class="card-hero tappable" onclick="openDinnerSwap()">
+    <div class="card-eyebrow"><span class="eyebrow">Tonight · dinner</span></div>
+    <div class="card-big">${tonightDinner ? escapeHtml(tonightDinner.title) : 'No dinner planned'}</div>
+    <div class="card-meta">${tonightDinner ? formatRecipeMeta(tonightDinner) : 'Tap to choose from your vault'}</div>
+  </div>`;
+
+  // Today's workout
+  const todayDisplay = formatWorkoutDisplay(todayWorkout);
+  html += `<div class="card tappable" onclick="openTodayWorkout()">
+    <div class="card-row">
+      <div style="flex:1;min-width:0;">
+        <div class="card-eyebrow"><span class="eyebrow">Today · workout</span></div>
+        <div class="card-big">${todayWorkout ? escapeHtml(todayDisplay.primary) : 'Rest day'}</div>
+        ${todayDisplay.secondary ? `<div class="card-meta" style="font-style:italic;">${escapeHtml(todayDisplay.secondary)}</div>` : ''}
+        <div class="card-meta">${todayWorkout ? (todayWorkout.status === 'done' ? 'Done ✓' : 'Tap to log or plan') : 'Tap to plan'}</div>
+      </div>
+    </div>
+    ${todayWorkout?.peloton_url && todayWorkout.status !== 'done' ? `<button class="btn ghost block" style="margin-top:10px;" onclick="event.stopPropagation();openPelotonUrl('${escapeHtml(todayWorkout.peloton_url)}')">Open Peloton</button>` : ''}
+  </div>`;
+
+  // Weekly count
+  const weekDots = weekDays.map(d => {
+    const w = weekWorkouts.find(w => w.planned_for === d);
+    const cls = w?.status === 'done' ? 'done' : (w ? 'planned' : '');
+    const isToday = d === today;
+    return `<div class="week-day ${isToday?'today':''}"><div class="l">${dayLabel(d)[0]}</div><div class="dot ${cls}"></div></div>`;
+  }).join('');
+  html += `<div class="card">
+    <div class="card-eyebrow"><span class="eyebrow">This week</span></div>
+    <div class="card-big">${doneCount} of ${target} session${target===1?'':'s'}</div>
+    <div class="week-strip">${weekDots}</div>
+  </div>`;
+
+  // Weight
+  if (latest || (m.weight_start_kg || m.weight_goal_kg)) {
+    const goal = m.weight_goal_kg;
+    const delta = (latest && goal) ? (latest.weight_kg - goal).toFixed(1) : null;
+    html += `<div class="card tappable" onclick="openWeightEntry()">
+      <div class="card-eyebrow"><span class="eyebrow">Weight</span></div>
+      <div class="spark-row">
+        <div class="spark-num">${latest ? latest.weight_kg : '—'}<span class="u">kg</span></div>
+        <div class="spark-delta ${delta && delta < 0 ? 'down' : ''}">${delta != null ? (delta > 0 ? `${delta} to go` : 'at goal') : 'Tap to log'}</div>
+      </div>
+      ${myWeights.length >= 2 ? renderSparkline(myWeights.slice(0, 30).reverse()) : ''}
+    </div>`;
+  } else {
+    html += `<div class="card tappable" onclick="openWeightEntry()">
+      <div class="card-eyebrow"><span class="eyebrow">Weight</span></div>
+      <div class="card-big">Tap to log</div>
+      <div class="card-meta">Set start and goal in your profile</div>
+    </div>`;
+  }
+
+  document.getElementById('todayContent').innerHTML = html;
+}
+
+function renderSparkline(weights) {
+  if (weights.length < 2) return '';
+  const vals = weights.map(w => parseFloat(w.weight_kg));
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+  const w = 320, h = 50, p = 4;
+  const xStep = (w - p*2) / (vals.length - 1);
+  const points = vals.map((v, i) => {
+    const x = p + i * xStep;
+    const y = h - p - ((v - min) / range) * (h - p*2);
+    return [x, y];
+  });
+  const pathD = points.map((pt, i) => (i === 0 ? 'M' : 'L') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
+  const areaD = pathD + ` L ${(w-p).toFixed(1)} ${h-p} L ${p} ${h-p} Z`;
+  return `<svg class="spark-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path class="area" d="${areaD}"/>
+    <path d="${pathD}"/>
+  </svg>`;
+}
+
+function sessionTypeLabel(t) {
+  return { ride:'Ride', strength:'Strength', yoga:'Yoga', stretch:'Stretch', walk:'Walk', run:'Run', other:'Workout', rest:'Rest day' }[t] || t;
+}
+function formatRecipeMeta(r) {
+  const bits = [];
+  if (r.kcal) bits.push(`~${r.kcal} kcal`);
+  if (r.protein_g) bits.push(`${r.protein_g}g protein`);
+  return bits.join(' · ') || 'Tap for recipe';
+}
+
+function getSlotRecipe(dateISO, slot) {
+  if (!State.weekPlan?.slots) return null;
+  const day = State.weekPlan.slots[dateISO];
+  if (!day || !day[slot]?.recipe_id) return null;
+  return State.recipes.find(r => r.id === day[slot].recipe_id) || null;
+}
+
+// ============================================================
+// TODAY · interactions
+// ============================================================
+function openDinnerSwap() {
+  const today = todayISO();
+  const current = getSlotRecipe(today, 'dinner');
+  const dinners = State.recipes.filter(r => r.category === 'dinner');
+  let html = `<div class="tiny" style="margin-bottom:12px;">${current ? 'Currently: ' + escapeHtml(current.title) : 'Pick tonight\'s dinner from your vault.'}</div>`;
+  if (dinners.length === 0) {
+    html += `<div class="empty"><div class="empty-title">Your dinner vault is empty</div><div class="empty-sub">Add a dinner first.</div>
+      <button class="btn primary" onclick="closeSheet();switchScreen('meals');switchMealTab('vault');State.vaultCategory='dinner';renderVault();">Go to vault</button></div>`;
+  } else {
+    html += '<div class="recipe-grid">' + dinners.map(r => `
+      <div class="recipe-tile" onclick="setSlotRecipe('${today}','dinner','${r.id}')">
+        ${r.image_url
+          ? `<div class="recipe-img" style="background-image:url('${escapeHtml(r.image_url)}')"></div>`
+          : `<div class="recipe-img empty"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg></div>`}
+        <div class="recipe-info">
+          <div class="recipe-title">${escapeHtml(r.title)}</div>
+          <div class="recipe-meta">${formatRecipeMeta(r)}</div>
+        </div>
+      </div>`).join('') + '</div>';
+    if (current) {
+      html += `<button class="btn ghost block" style="margin-top:14px;" onclick="setSlotRecipe('${today}','dinner',null)">Remove tonight's dinner</button>`;
+    }
+  }
+  openSheet('Tonight', html);
+}
+
+async function setSlotRecipe(dateISO, slot, recipeId) {
+  closeSheet();
+  const slots = JSON.parse(JSON.stringify(State.weekPlan.slots || {}));
+  if (!slots[dateISO]) slots[dateISO] = {};
+  if (recipeId) {
+    slots[dateISO][slot] = { recipe_id: recipeId, cooked: false };
+  } else if (slots[dateISO][slot]) {
+    delete slots[dateISO][slot];
+    if (Object.keys(slots[dateISO]).length === 0) delete slots[dateISO];
+  }
+  State.weekPlan.slots = slots;
+  setSync('syncing', 'Saving');
+  const { error } = await State.client.from('week_plans').update({ slots, updated_at: new Date().toISOString() }).eq('id', State.weekPlan.id);
+  if (error) { toast('Save failed'); setSync('offline','Error'); }
+  else { setSync('synced','Saved'); toast(recipeId ? 'Saved' : 'Removed'); }
+  renderAll();
+}
+
+function openTodayWorkout() {
+  const today = todayISO();
+  const m = activeMember();
+  const existing = State.workouts.find(w => w.member_id === m.id && w.planned_for === today);
+  openWorkoutSheet(today, existing);
+}
+
+function openWorkoutSheet(dateISO, existing) {
+  const types = ['ride','strength','yoga','stretch','walk','run','other','rest'];
+  const current = existing?.session_type || 'ride';
+  const dur = existing?.duration_min ?? 30;
+  const status = existing?.status || 'planned';
+  const note = existing?.note || '';
+  const d = new Date(dateISO + 'T00:00:00');
+  const title = dateISO === todayISO() ? 'Today' : d.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'short' });
+
+  const instructor = existing?.instructor || '';
+  const classTitle = existing?.class_title || '';
+  const pelotonUrl = existing?.peloton_url || '';
+  const hasPelotonData = !!(instructor || classTitle || pelotonUrl);
+
+  const html = `
+    <div class="field">
+      <label class="field-label">Session</label>
+      <div class="chip-group" id="sessChips">
+        ${types.map(t => `<button class="chip ${t===current?'active':''}" data-t="${t}" onclick="this.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));this.classList.add('active');">${sessionTypeLabel(t)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Duration</label>
+      <div class="stepper">
+        <button onclick="adjStep('wDur',-5)">−</button>
+        <span class="v" id="wDur">${dur}</span>
+        <button onclick="adjStep('wDur',5)">+</button>
+        <span style="padding:0 14px;color:var(--ink-3);font-size:13px;">min</span>
+      </div>
+    </div>
+
+    <details ${hasPelotonData ? 'open' : ''} style="margin:6px 0 14px;border-top:1px solid var(--line);padding-top:12px;">
+      <summary style="cursor:pointer;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-4);font-weight:500;list-style:none;display:flex;align-items:center;gap:6px;">
+        <span>Peloton details</span>
+        <span style="color:var(--ink-4);font-size:10px;">${hasPelotonData ? '' : '(optional)'}</span>
+      </summary>
+      <div style="margin-top:12px;">
+        <div class="field">
+          <label class="field-label">Instructor</label>
+          <input class="input" id="wInstructor" placeholder="Olivia Amato" value="${escapeHtml(instructor)}">
+        </div>
+        <div class="field">
+          <label class="field-label">Class title</label>
+          <input class="input" id="wClassTitle" placeholder="Pop Ride" value="${escapeHtml(classTitle)}">
+        </div>
+        <div class="field">
+          <label class="field-label">Peloton URL</label>
+          <input class="input" id="wPelotonUrl" placeholder="https://members.onepeloton.com/..." value="${escapeHtml(pelotonUrl)}">
+        </div>
+      </div>
+    </details>
+
+    <div class="field">
+      <label class="field-label">Note (optional)</label>
+      <textarea class="textarea" id="wNote" placeholder="How was it?">${escapeHtml(note)}</textarea>
+    </div>
+    <div class="btn-row">
+      ${dateISO === todayISO() && status !== 'done' ? `<button class="btn primary block" onclick="saveWorkout('${dateISO}', ${existing ? `'${existing.id}'` : 'null'}, 'done')">Mark done</button>` : ''}
+      ${status === 'done' ? `<button class="btn ghost block" onclick="saveWorkout('${dateISO}', ${existing ? `'${existing.id}'` : 'null'}, 'planned')">Mark not done</button>` : `<button class="btn block" onclick="saveWorkout('${dateISO}', ${existing ? `'${existing.id}'` : 'null'}, 'planned')">${existing ? 'Save' : 'Plan'}</button>`}
+    </div>
+    ${pelotonUrl ? `<button class="btn ghost block" style="margin-top:8px;" onclick="openPelotonUrl('${escapeHtml(pelotonUrl)}')">Open this class in Peloton</button>` : (dateISO === todayISO() ? `<button class="btn ghost block" style="margin-top:8px;" onclick="openPeloton()">Open Peloton</button>` : '')}
+    ${existing ? `<button class="btn danger block" style="margin-top:8px;" onclick="deleteWorkout('${existing.id}')">Remove</button>` : ''}
+  `;
+  openSheet(title, html);
+}
+
+function adjStep(id, delta) {
+  const el = document.getElementById(id);
+  let v = parseInt(el.textContent, 10);
+  v = Math.max(0, Math.min(180, v + delta));
+  el.textContent = v;
+}
+
+async function saveWorkout(dateISO, existingId, status) {
+  const m = activeMember();
+  const sessChip = document.querySelector('#sessChips .chip.active');
+  const session_type = sessChip?.dataset.t || 'other';
+  const duration_min = parseInt(document.getElementById('wDur').textContent, 10);
+  const note = document.getElementById('wNote').value.trim() || null;
+  const instructor = document.getElementById('wInstructor')?.value.trim() || null;
+  const class_title = document.getElementById('wClassTitle')?.value.trim() || null;
+  const peloton_url = document.getElementById('wPelotonUrl')?.value.trim() || null;
+  let peloton_class_id = null;
+  if (peloton_url) {
+    const parsed = parsePelotonUrl(peloton_url);
+    peloton_class_id = parsed?.class_id || null;
+  }
+
+  closeSheet();
+  setSync('syncing','Saving');
+  const payload = {
+    household_id: State.householdId,
+    member_id: m.id,
+    planned_for: dateISO,
+    session_type,
+    duration_min,
+    status,
+    done_at: status === 'done' ? new Date().toISOString() : null,
+    note,
+    instructor,
+    class_title,
+    peloton_url,
+    peloton_class_id,
+  };
+  let res;
+  if (existingId) {
+    res = await State.client.from('workouts').update(payload).eq('id', existingId).select().single();
+  } else {
+    res = await State.client.from('workouts').insert(payload).select().single();
+  }
+  if (res.error) { toast('Save failed'); setSync('offline','Error'); return; }
+  // upsert into state
+  const idx = State.workouts.findIndex(w => w.id === res.data.id);
+  if (idx >= 0) State.workouts[idx] = res.data; else State.workouts.push(res.data);
+  setSync('synced','Saved');
+  toast(status === 'done' ? 'Logged' : 'Saved');
+  renderAll();
+}
+
+async function deleteWorkout(id) {
+  if (!confirm('Remove this session?')) return;
+  closeSheet();
+  setSync('syncing','Removing');
+  const { error } = await State.client.from('workouts').delete().eq('id', id);
+  if (error) { toast('Failed'); setSync('offline','Error'); return; }
+  State.workouts = State.workouts.filter(w => w.id !== id);
+  setSync('synced','Removed');
+  renderAll();
+}
+
+function openPeloton() {
+  // Try app, fall back to web
+  const start = Date.now();
+  const fallback = setTimeout(() => {
+    window.location.href = 'https://members.onepeloton.com';
+  }, 1200);
+  window.location.href = 'onepeloton://';
+  // If page is hidden quickly, app opened — clear fallback
+  setTimeout(() => { if (document.hidden) clearTimeout(fallback); }, 1000);
+}
+
+function openPelotonUrl(url) {
+  if (!url) return;
+  window.open(url, '_blank');
+}
+
+
+function openWeightEntry() {
+  const m = activeMember();
+  const today = todayISO();
+  const existing = State.weights.find(w => w.member_id === m.id && w.logged_at === today);
+  const latest = State.weights.find(w => w.member_id === m.id);
+  const startVal = existing?.weight_kg || latest?.weight_kg || m.weight_start_kg || 75;
+  const html = `
+    <div class="field">
+      <label class="field-label">Today's weight</label>
+      <div class="stepper">
+        <button onclick="adjWeight(-0.5)">−</button>
+        <span class="v" id="wKg" style="min-width:80px;font-family:'Fraunces',serif;font-size:24px;font-weight:300;">${parseFloat(startVal).toFixed(1)}</span>
+        <button onclick="adjWeight(0.5)">+</button>
+        <span style="padding:0 14px;color:var(--ink-3);font-size:13px;">kg</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary block" onclick="saveWeight()">${existing ? 'Update' : 'Save'}</button>
+    </div>
+    ${existing ? `<button class="btn danger block" style="margin-top:8px;" onclick="deleteWeight('${existing.id}')">Remove today's entry</button>` : ''}
+  `;
+  openSheet('Weight', html);
+}
+
+function adjWeight(delta) {
+  const el = document.getElementById('wKg');
+  let v = parseFloat(el.textContent);
+  v = Math.max(30, Math.min(300, v + delta));
+  el.textContent = v.toFixed(1);
+}
+
+async function saveWeight() {
+  const m = activeMember();
+  const today = todayISO();
+  const weight_kg = parseFloat(document.getElementById('wKg').textContent);
+  closeSheet();
+  setSync('syncing','Saving');
+  const { data, error } = await State.client
+    .from('weight_entries')
+    .upsert({ household_id: State.householdId, member_id: m.id, logged_at: today, weight_kg }, { onConflict: 'member_id,logged_at' })
+    .select()
+    .single();
+  if (error) { toast('Failed'); setSync('offline','Error'); return; }
+  const idx = State.weights.findIndex(w => w.id === data.id);
+  if (idx >= 0) State.weights[idx] = data;
+  else {
+    State.weights.unshift(data);
+    State.weights.sort((a,b) => b.logged_at.localeCompare(a.logged_at));
+  }
+  setSync('synced','Saved');
+  toast('Saved');
+  renderAll();
+}
+
+async function deleteWeight(id) {
+  closeSheet();
+  await State.client.from('weight_entries').delete().eq('id', id);
+  State.weights = State.weights.filter(w => w.id !== id);
+  renderAll();
+}
+
+// ============================================================
+// RENDER · EXERCISE
+// ============================================================
+function renderExercise() {
+  const m = activeMember();
+  if (!m) return;
+  const today = todayISO();
+
+  // Rolling 7-day strip starts at today
+  const weekDays = rolling7FromToday();
+
+  // Weekly count still uses calendar week (Mon-Sun)
+  const calWeekStart = weekStartFor(new Date());
+  const calWeekDays = Array.from({length:7}, (_,i) => isoDateAddDays(calWeekStart, i));
+  const calWeekWorkouts = State.workouts.filter(w => w.member_id === m.id && calWeekDays.includes(w.planned_for));
+  const doneCount = calWeekWorkouts.filter(w => w.status === 'done').length;
+  const target = m.weekly_session_target || 4;
+
+  // Workouts for the visible (rolling) strip
+  const visibleWorkouts = State.workouts.filter(w => w.member_id === m.id && weekDays.includes(w.planned_for));
+
+  document.getElementById('exerciseSub').innerHTML = `${doneCount} of ${target} sessions · ${escapeHtml(m.display_name)}`;
+
+  let html = '';
+
+  // Favourite instructor ambient label
+  if (m.favourite_instructor) {
+    html += `<div class="tiny" style="padding:0 2px 12px;color:var(--ink-3);">This week · ${escapeHtml(m.favourite_instructor)}</div>`;
+  }
+
+  // Action buttons — moved to top
+  html += `<div style="display:flex;gap:8px;margin-bottom:14px;">
+    <button class="btn primary" style="flex:1;" onclick="syncPelotonCalendars(true)">Sync Peloton</button>
+    <button class="btn accent" style="flex:1;" onclick="openMagicWeekExercise()">✨ Magic week</button>
+  </div>`;
+
+  // 7 day cards
+  weekDays.forEach((d, idx) => {
+    const w = visibleWorkouts.find(w => w.planned_for === d);
+    const isToday = d === today;
+    const isCancelled = w?.status === 'cancelled';
+    const display = formatWorkoutDisplay(w);
+    const cancelledStyle = isCancelled ? 'opacity:0.55;' : '';
+    const titleStyle = isCancelled ? 'text-decoration:line-through;' : '';
+    html += `<div class="day-card ${isToday?'today':''}" style="${cancelledStyle}" onclick="openWorkoutFor('${d}')">
+      <div class="day-head">
+        <div class="day-name">${isToday ? 'Today' : dayLabel(d)} <span class="date">${shortDate(d)}</span></div>
+        ${isCancelled ? `<div class="tiny" style="color:var(--bramble);">Cancelled</div>` :
+          (w?.status === 'done' ? `<div class="tiny" style="color:var(--moss);">Done ✓</div>` :
+          (w ? `<div class="tiny">Planned</div>` :
+          `<div class="tiny" style="color:var(--ink-4);">Tap to plan</div>`))}
+      </div>
+      <div class="card-meta" style="margin-top:0;${titleStyle}">${w ? escapeHtml(display.primary) : 'No session'}</div>
+      ${w && display.secondary ? `<div class="tiny" style="margin-top:4px;font-style:italic;color:var(--ink-3);${titleStyle}">${escapeHtml(display.secondary)}</div>` : ''}
+      ${w?.note ? `<div class="tiny" style="margin-top:6px;font-style:italic;">"${escapeHtml(w.note)}"</div>` : ''}
+      ${w?.peloton_url && w.status === 'planned' ? `<div style="margin-top:10px;"><button class="card-action" onclick="event.stopPropagation();openPelotonUrl('${escapeHtml(w.peloton_url)}')">Open Peloton</button></div>` : ''}
+    </div>`;
+  });
+
+  // Monthly heatmap (last 28 days)
+  const heatStart = isoDateAddDays(today, -27);
+  const heatDays = Array.from({length:28}, (_,i) => isoDateAddDays(heatStart, i));
+  html += `<div class="card" style="margin-top:14px;">
+    <div class="card-eyebrow"><span class="eyebrow">Last 28 days</span></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:10px;">
+      ${heatDays.map(d => {
+        const w = State.workouts.find(w => w.member_id === m.id && w.planned_for === d && w.status === 'done');
+        return `<div style="aspect-ratio:1;border-radius:4px;background:${w?'var(--accent)':'var(--paper-2)'};border:1px solid ${w?'var(--accent)':'var(--line)'};opacity:${w?1:0.5};" title="${d}"></div>`;
+      }).join('')}
+    </div>
+  </div>`;
+
+  // Setup hint if no calendar configured yet
+  const calendarsConfigured = State.members.filter(mm => mm.peloton_calendar_url).length;
+  if (calendarsConfigured === 0) {
+    html += `<div class="card" style="margin-top:14px;background:var(--accent-soft);border-color:var(--accent);">
+      <div class="card-eyebrow"><span class="eyebrow">Set up Peloton sync</span></div>
+      <div class="card-meta" style="margin-top:6px;">
+        Add a Peloton calendar URL in your profile to auto-import enrolled classes.
+      </div>
+      <button class="card-action" style="margin-top:10px;" onclick="switchScreen('profile')">Open profile →</button>
+    </div>`;
+  }
+
+  // Quiet "Open Peloton" at bottom for ad-hoc use
+  html += `<button class="btn ghost block" style="margin-top:14px;" onclick="openPeloton()">Open Peloton</button>`;
+
+  document.getElementById('exerciseContent').innerHTML = html;
+}
+
+function openWorkoutFor(dateISO) {
+  const m = activeMember();
+  const existing = State.workouts.find(w => w.member_id === m.id && w.planned_for === dateISO);
+  openWorkoutSheet(dateISO, existing);
+}
+
+// ============================================================
+// RENDER · MEALS · VAULT
+// ============================================================
+function renderVault() {
+  const root = document.getElementById('mealsVault');
+  if (!root) return;
+  const cat = State.vaultCategory;
+  const recipes = State.recipes.filter(r => r.category === cat);
+
+  let html = `<div class="chip-group" style="margin-bottom:14px;">
+    ${['breakfast','lunch','dinner'].map(c => `<button class="chip ${c===cat?'active':''}" onclick="setVaultCategory('${c}')">${c[0].toUpperCase()+c.slice(1)}</button>`).join('')}
+  </div>`;
+
+  if (recipes.length === 0) {
+    html += `<div class="empty">
+      <div class="empty-title">No ${cat}s yet</div>
+      <div class="empty-sub">Add the meals you actually cook. Up to 20 in each category.</div>
+      <button class="btn primary" onclick="openRecipeEditor()">Add first ${cat}</button>
+    </div>`;
+  } else {
+    html += '<div class="recipe-grid">';
+    recipes.forEach(r => {
+      html += `<div class="recipe-tile" onclick="openRecipe('${r.id}')">
+        ${r.image_url
+          ? `<div class="recipe-img" style="background-image:url('${escapeHtml(r.image_url)}')">${r.favourite ? '<div class="recipe-fav"><svg viewBox="0 0 24 24"><path d="M12 21l-1.5-1.4C5 14.4 2 11.7 2 8.4 2 5.8 4 4 6.5 4 7.9 4 9.3 4.7 12 7c2.7-2.3 4.1-3 5.5-3C20 4 22 5.8 22 8.4c0 3.3-3 6-8.5 11.2L12 21z"/></svg></div>' : ''}</div>`
+          : `<div class="recipe-img empty"><svg viewBox="0 0 24 24"><path d="M3 8h18M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M9 8V5a3 3 0 0 1 6 0v3"/></svg>${r.favourite ? '<div class="recipe-fav"><svg viewBox="0 0 24 24"><path d="M12 21l-1.5-1.4C5 14.4 2 11.7 2 8.4 2 5.8 4 4 6.5 4 7.9 4 9.3 4.7 12 7c2.7-2.3 4.1-3 5.5-3C20 4 22 5.8 22 8.4c0 3.3-3 6-8.5 11.2L12 21z"/></svg></div>' : ''}</div>`}
+        <div class="recipe-info">
+          <div class="recipe-title">${escapeHtml(r.title)}</div>
+          <div class="recipe-meta">${formatRecipeMeta(r)}</div>
+        </div>
+      </div>`;
+    });
+    if (recipes.length < 20) {
+      html += `<div class="recipe-add-tile" onclick="openRecipeEditor()">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Add ${cat}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  root.innerHTML = html;
+}
+
+function setVaultCategory(c) {
+  State.vaultCategory = c;
+  renderVault();
+}
+
+function openRecipe(id) {
+  const r = State.recipes.find(x => x.id === id);
+  if (!r) return;
+  const ings = State.ingredients[id] || [];
+  const today = todayISO();
+  const plannedToday = State.weekPlan?.slots?.[today]?.[r.category]?.recipe_id === id;
+
+  const html = `
+    ${r.image_url ? `<div style="aspect-ratio:1.6/1;background:var(--paper-2) center/cover url('${escapeHtml(r.image_url)}');border-radius:var(--radius);margin-bottom:14px;"></div>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="tiny">${formatRecipeMeta(r) || '—'} · ${r.servings} serving${r.servings===1?'':'s'}</div>
+      <button onclick="toggleFavourite('${r.id}')" style="padding:6px;">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="${r.favourite?'var(--accent)':'var(--ink-4)'}" fill="${r.favourite?'var(--accent)':'none'}" stroke-width="1.5"><path d="M12 21l-1.5-1.4C5 14.4 2 11.7 2 8.4 2 5.8 4 4 6.5 4 7.9 4 9.3 4.7 12 7c2.7-2.3 4.1-3 5.5-3C20 4 22 5.8 22 8.4c0 3.3-3 6-8.5 11.2L12 21z"/></svg>
+      </button>
+    </div>
+    ${ings.length ? `<div class="field"><label class="field-label">Ingredients</label>
+      <div style="font-size:14px;line-height:1.7;">${ings.map(i => `<div>${i.quantity ? `<strong>${i.quantity}${i.unit?' '+escapeHtml(i.unit):''}</strong> ` : ''}${escapeHtml(i.name)}</div>`).join('')}</div>
+    </div>` : ''}
+    ${r.method ? `<div class="field"><label class="field-label">Method</label>
+      <div style="font-size:14px;line-height:1.7;white-space:pre-wrap;">${escapeHtml(r.method)}</div>
+    </div>` : ''}
+    ${r.tags?.length ? `<div class="field"><label class="field-label">Tags</label>
+      <div class="chip-group">${r.tags.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div>
+    </div>` : ''}
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn primary block" onclick="setSlotRecipe('${today}','${r.category}','${r.id}')">${plannedToday ? '✓ Planned today' : `Cook this ${r.category === 'dinner' ? 'tonight' : 'today'}`}</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn block" onclick="openRecipeEditor('${r.id}')">Edit</button>
+      <button class="btn danger block" onclick="deleteRecipe('${r.id}')">Delete</button>
+    </div>
+  `;
+  openSheet(escapeHtml(r.title), html);
+}
+
+async function toggleFavourite(id) {
+  const r = State.recipes.find(x => x.id === id);
+  if (!r) return;
+  r.favourite = !r.favourite;
+  await State.client.from('recipes').update({ favourite: r.favourite, updated_at: new Date().toISOString() }).eq('id', id);
+  openRecipe(id);
+  renderVault();
+}
+
+async function deleteRecipe(id) {
+  if (!confirm('Delete this recipe?')) return;
+  closeSheet();
+  await State.client.from('recipes').delete().eq('id', id);
+  State.recipes = State.recipes.filter(r => r.id !== id);
+  delete State.ingredients[id];
+  toast('Deleted');
+  renderVault();
+}
+
+// ============================================================
+// RECIPE EDITOR
+// ============================================================
+let editingRecipeId = null;
+let editingIngredients = [];
+
+function openRecipeEditor(id) {
+  editingRecipeId = id || null;
+  const r = id ? State.recipes.find(x => x.id === id) : null;
+  editingIngredients = id ? [...(State.ingredients[id] || []).map(i => ({...i}))] : [];
+
+  const cat = r?.category || State.vaultCategory;
+
+  const html = `
+    <div class="field">
+      <label class="field-label">Category</label>
+      <div class="chip-group" id="rCat">
+        ${['breakfast','lunch','dinner'].map(c => `<button class="chip ${c===cat?'active':''}" data-c="${c}" onclick="this.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));this.classList.add('active');">${c[0].toUpperCase()+c.slice(1)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Title</label>
+      <input class="input" id="rTitle" placeholder="Lemon chicken &amp; orzo" value="${escapeHtml(r?.title || '')}">
+    </div>
+    <div class="field">
+      <label class="field-label">Image URL (optional)</label>
+      <input class="input" id="rImg" placeholder="https://..." value="${escapeHtml(r?.image_url || '')}">
+    </div>
+    <div class="field input-row">
+      <div>
+        <label class="field-label">Calories</label>
+        <input class="input" id="rKcal" type="number" inputmode="numeric" placeholder="—" value="${r?.kcal || ''}">
+      </div>
+      <div>
+        <label class="field-label">Protein (g)</label>
+        <input class="input" id="rProtein" type="number" inputmode="numeric" placeholder="—" value="${r?.protein_g || ''}">
+      </div>
+      <div>
+        <label class="field-label">Servings</label>
+        <input class="input" id="rServings" type="number" inputmode="numeric" value="${r?.servings || 2}">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Ingredients</label>
+      <div id="ingList"></div>
+      <button class="ing-add" onclick="addIngredient()">+ Add ingredient</button>
+      ${State.settings?.claude_api_key ? `<button class="btn ghost block" style="margin-top:8px;" onclick="estimateMacros()">Estimate calories &amp; protein</button>` : ''}
+    </div>
+    <div class="field">
+      <label class="field-label">Method</label>
+      <textarea class="textarea" id="rMethod" placeholder="Heat oil in a pan...">${escapeHtml(r?.method || '')}</textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">Tags (comma separated)</label>
+      <input class="input" id="rTags" placeholder="quick, freezer, kids" value="${escapeHtml((r?.tags || []).join(', '))}">
+    </div>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn primary block" onclick="saveRecipe()">${id ? 'Save changes' : 'Add to vault'}</button>
+    </div>
+  `;
+  openSheet(id ? 'Edit recipe' : 'New recipe', html);
+  renderIngredientList();
+}
+
+function addIngredient() {
+  editingIngredients.push({ name:'', quantity:null, unit:'', category:'other', sort_order: editingIngredients.length });
+  renderIngredientList();
+}
+
+function renderIngredientList() {
+  const root = document.getElementById('ingList');
+  if (!root) return;
+  if (editingIngredients.length === 0) {
+    root.innerHTML = '<div class="tiny" style="padding:8px 0;">No ingredients yet.</div>';
+    return;
+  }
+  root.innerHTML = editingIngredients.map((i, idx) => `
+    <div class="ing-row">
+      <input placeholder="Name" value="${escapeHtml(i.name)}" onchange="editingIngredients[${idx}].name=this.value">
+      <input placeholder="Qty" type="number" inputmode="decimal" value="${i.quantity ?? ''}" onchange="editingIngredients[${idx}].quantity=this.value?parseFloat(this.value):null">
+      <select onchange="editingIngredients[${idx}].unit=this.value">
+        <option value="" ${!i.unit?'selected':''}>unit</option>
+        <option value="g" ${i.unit==='g'?'selected':''}>g</option>
+        <option value="kg" ${i.unit==='kg'?'selected':''}>kg</option>
+        <option value="ml" ${i.unit==='ml'?'selected':''}>ml</option>
+        <option value="l" ${i.unit==='l'?'selected':''}>l</option>
+        <option value="tbsp" ${i.unit==='tbsp'?'selected':''}>tbsp</option>
+        <option value="tsp" ${i.unit==='tsp'?'selected':''}>tsp</option>
+        <option value="cup" ${i.unit==='cup'?'selected':''}>cup</option>
+        <option value="oz" ${i.unit==='oz'?'selected':''}>oz</option>
+      </select>
+      <button class="ing-remove" onclick="editingIngredients.splice(${idx},1);renderIngredientList();">×</button>
+    </div>
+    <div style="margin:-2px 0 8px 0;">
+      <select style="font-size:11px;padding:4px 8px;background:var(--paper-2);border:1px solid var(--line);border-radius:4px;color:var(--ink-3);" onchange="editingIngredients[${idx}].category=this.value">
+        <option value="produce" ${i.category==='produce'?'selected':''}>Produce</option>
+        <option value="meat" ${i.category==='meat'?'selected':''}>Meat &amp; fish</option>
+        <option value="dairy" ${i.category==='dairy'?'selected':''}>Dairy</option>
+        <option value="pantry" ${i.category==='pantry'?'selected':''}>Pantry</option>
+        <option value="other" ${i.category==='other'?'selected':''}>Other</option>
+      </select>
+    </div>
+  `).join('');
+}
+
+async function saveRecipe() {
+  const cat = document.querySelector('#rCat .chip.active')?.dataset.c || 'dinner';
+  const title = document.getElementById('rTitle').value.trim();
+  if (!title) { toast('Title required'); return; }
+  const image_url = document.getElementById('rImg').value.trim() || null;
+  const kcal = parseInt(document.getElementById('rKcal').value, 10) || null;
+  const protein_g = parseInt(document.getElementById('rProtein').value, 10) || null;
+  const servings = parseInt(document.getElementById('rServings').value, 10) || 2;
+  const method = document.getElementById('rMethod').value.trim() || null;
+  const tags = document.getElementById('rTags').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  closeSheet();
+  setSync('syncing','Saving');
+
+  const recipePayload = {
+    household_id: State.householdId,
+    category: cat,
+    title, image_url, kcal, protein_g, servings, method, tags,
+    updated_at: new Date().toISOString(),
+  };
+
+  let recipeId = editingRecipeId;
+  if (recipeId) {
+    const { error } = await State.client.from('recipes').update(recipePayload).eq('id', recipeId);
+    if (error) { toast('Failed'); setSync('offline','Error'); return; }
+  } else {
+    const { data, error } = await State.client.from('recipes').insert(recipePayload).select().single();
+    if (error) { toast('Failed'); setSync('offline','Error'); return; }
+    recipeId = data.id;
+    State.recipes.push(data);
+  }
+
+  // ingredients: full replace
+  await State.client.from('ingredients').delete().eq('recipe_id', recipeId);
+  if (editingIngredients.length > 0) {
+    const payload = editingIngredients
+      .filter(i => i.name.trim())
+      .map((i, idx) => ({
+        recipe_id: recipeId,
+        name: i.name.trim(),
+        quantity: i.quantity,
+        unit: i.unit || null,
+        category: i.category || 'other',
+        sort_order: idx,
+      }));
+    if (payload.length) {
+      const { data: ingsData } = await State.client.from('ingredients').insert(payload).select();
+      State.ingredients[recipeId] = ingsData || [];
+    } else {
+      State.ingredients[recipeId] = [];
+    }
+  } else {
+    State.ingredients[recipeId] = [];
+  }
+
+  // update in memory
+  const { data: refreshed } = await State.client.from('recipes').select('*').eq('id', recipeId).single();
+  const idx = State.recipes.findIndex(r => r.id === recipeId);
+  if (idx >= 0) State.recipes[idx] = refreshed;
+
+  setSync('synced','Saved');
+  toast(editingRecipeId ? 'Updated' : 'Added');
+  editingRecipeId = null;
+  editingIngredients = [];
+  renderVault();
+}
+
+async function estimateMacros() {
+  const apiKey = State.settings?.claude_api_key;
+  if (!apiKey) { toast('Set API key in Profile first'); return; }
+  const ings = editingIngredients.filter(i => i.name.trim());
+  if (ings.length === 0) { toast('Add ingredients first'); return; }
+  const title = document.getElementById('rTitle').value.trim();
+  const servings = parseInt(document.getElementById('rServings').value, 10) || 2;
+
+  toast('Estimating…');
+  const ingredientText = ings.map(i => `${i.quantity || ''} ${i.unit || ''} ${i.name}`.trim()).join('\n');
+  const prompt = `Estimate calories and protein for this recipe per serving. Return ONLY valid JSON like {"kcal": 520, "protein_g": 32}.
+
+Recipe: ${title || 'untitled'}
+Servings: ${servings}
+Ingredients:
+${ingredientText}`;
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        messages: [{ role:'user', content: prompt }],
+      }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    const text = data.content?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*?\}/);
+    if (!match) throw new Error('No JSON in response');
+    const parsed = JSON.parse(match[0]);
+    if (parsed.kcal) document.getElementById('rKcal').value = parsed.kcal;
+    if (parsed.protein_g) document.getElementById('rProtein').value = parsed.protein_g;
+    toast('Estimated');
+  } catch (e) {
+    console.error(e);
+    toast('Estimate failed');
+  }
+}
+
+// ============================================================
+// RENDER · MEALS · WEEK
+// ============================================================
+function renderWeek() {
+  const root = document.getElementById('mealsWeek');
+  if (!root) return;
+  const today = todayISO();
+  const weekStart = State.weekStart;
+  const weekDays = Array.from({length:7}, (_,i) => isoDateAddDays(weekStart, i));
+
+  let html = `<div class="btn-row" style="margin-bottom:14px;">
+    <button class="btn accent block" onclick="generateMagicWeek()">✨ Magic week</button>
+  </div>`;
+
+  const dayLabels = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  weekDays.forEach(d => {
+    const [yy, mm, dd] = d.split('-').map(Number);
+    const dayOfWeek = new Date(yy, mm - 1, dd).getDay();
+    const slots = State.weekPlan?.slots?.[d] || {};
+    const isToday = d === today;
+
+    html += `<div class="day-card ${isToday?'today':''}">
+      <div class="day-head">
+        <div class="day-name">${dayLabels[dayOfWeek]} <span class="date">${shortDate(d)}</span></div>
+        ${isToday ? '<div class="tiny" style="color:var(--accent);">Today</div>' : ''}
+      </div>
+      ${['breakfast','lunch','dinner'].map(slot => {
+        const s = slots[slot];
+        const recipe = s?.recipe_id ? State.recipes.find(r => r.id === s.recipe_id) : null;
+        return `<div class="slot-row" onclick="openSlotPicker('${d}','${slot}')">
+          <div class="slot-label">${slot[0].toUpperCase()+slot.slice(1)}</div>
+          <div class="slot-content ${!recipe?'empty':''} ${s?.cooked?'cooked':''}">${recipe ? escapeHtml(recipe.title) : '—'}</div>
+          <div class="slot-action">${recipe ? (s?.cooked?'✓':'') : '+'}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  });
+
+  root.innerHTML = html;
+}
+
+function openSlotPicker(dateISO, slot) {
+  const slotData = State.weekPlan?.slots?.[dateISO]?.[slot];
+  const current = slotData?.recipe_id ? State.recipes.find(r => r.id === slotData.recipe_id) : null;
+  const recipes = State.recipes.filter(r => r.category === slot);
+  const dateLong = new Date(dateISO + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'short' });
+
+  let html = `<div class="tiny" style="margin-bottom:12px;">${dateLong} · ${slot}</div>`;
+  if (current) {
+    html += `<div class="btn-row" style="margin-bottom:14px;">
+      <button class="btn block" onclick="markCooked('${dateISO}','${slot}',${slotData.cooked?'false':'true'})">${slotData.cooked ? 'Unmark cooked' : 'Mark cooked'}</button>
+      <button class="btn danger block" onclick="setSlotRecipe('${dateISO}','${slot}',null)">Remove</button>
+    </div>`;
+  }
+  if (recipes.length === 0) {
+    html += `<div class="empty">
+      <div class="empty-title">No ${slot}s in vault</div>
+      <div class="empty-sub">Add ${slot} recipes first.</div>
+    </div>`;
+  } else {
+    html += '<div class="recipe-grid">';
+    recipes.forEach(r => {
+      const isCurrent = current?.id === r.id;
+      html += `<div class="recipe-tile" onclick="setSlotRecipe('${dateISO}','${slot}','${r.id}')" style="${isCurrent?'border-color:var(--accent);border-width:2px;':''}">
+        ${r.image_url
+          ? `<div class="recipe-img" style="background-image:url('${escapeHtml(r.image_url)}')"></div>`
+          : `<div class="recipe-img empty"><svg viewBox="0 0 24 24"><path d="M3 8h18M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M9 8V5a3 3 0 0 1 6 0v3"/></svg></div>`}
+        <div class="recipe-info">
+          <div class="recipe-title">${escapeHtml(r.title)}</div>
+          <div class="recipe-meta">${formatRecipeMeta(r)}</div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  openSheet(slot[0].toUpperCase()+slot.slice(1), html);
+}
+
+async function markCooked(dateISO, slot, cooked) {
+  closeSheet();
+  const slots = JSON.parse(JSON.stringify(State.weekPlan.slots || {}));
+  if (!slots[dateISO] || !slots[dateISO][slot]) return;
+  slots[dateISO][slot].cooked = cooked === 'true' || cooked === true;
+  State.weekPlan.slots = slots;
+  await State.client.from('week_plans').update({ slots, updated_at: new Date().toISOString() }).eq('id', State.weekPlan.id);
+  // also update recipe last_cooked
+  if (slots[dateISO][slot].cooked) {
+    const recipeId = slots[dateISO][slot].recipe_id;
+    await State.client.from('recipes').update({ last_cooked_at: dateISO }).eq('id', recipeId);
+    const r = State.recipes.find(x => x.id === recipeId);
+    if (r) r.last_cooked_at = dateISO;
+  }
+  renderWeek();
+  renderShopping();
+}
+
+// ============================================================
+// MAGIC WEEK
+// ============================================================
+async function generateMagicWeek() {
+  if (!State.recipes.length) {
+    toast('Add some recipes first');
+    switchMealTab('vault');
+    return;
+  }
+
+  const weekStart = State.weekStart;
+  const weekDays = Array.from({length:7}, (_,i) => isoDateAddDays(weekStart, i));
+  const existing = State.weekPlan.slots || {};
+  const newSlots = JSON.parse(JSON.stringify(existing));
+
+  function pickWeighted(category, lastPicked) {
+    const pool = State.recipes.filter(r => r.category === category && r.id !== lastPicked);
+    if (pool.length === 0) {
+      const fallback = State.recipes.filter(r => r.category === category);
+      if (fallback.length === 0) return null;
+      return fallback[Math.floor(Math.random() * fallback.length)];
+    }
+    // favourites get 2x weight
+    const weighted = [];
+    pool.forEach(r => { weighted.push(r); if (r.favourite) weighted.push(r); });
+    return weighted[Math.floor(Math.random() * weighted.length)];
+  }
+
+  let prev = { breakfast:null, lunch:null, dinner:null };
+  for (const d of weekDays) {
+    if (!newSlots[d]) newSlots[d] = {};
+    for (const slot of ['breakfast','lunch','dinner']) {
+      if (newSlots[d][slot]?.recipe_id) {
+        prev[slot] = newSlots[d][slot].recipe_id;
+        continue;
+      }
+      const r = pickWeighted(slot, prev[slot]);
+      if (r) {
+        newSlots[d][slot] = { recipe_id: r.id, cooked: false };
+        prev[slot] = r.id;
+      }
+    }
+  }
+
+  // Preview sheet
+  let html = `<div class="tiny" style="margin-bottom:14px;">Preview the suggested week. Already-filled slots are preserved.</div>`;
+  weekDays.forEach(d => {
+    const slots = newSlots[d] || {};
+    const date = new Date(d + 'T00:00:00');
+    html += `<div class="day-card" style="margin-bottom:8px;">
+      <div class="day-name" style="margin-bottom:6px;">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()]} <span class="date">${shortDate(d)}</span></div>
+      ${['breakfast','lunch','dinner'].map(s => {
+        const id = slots[s]?.recipe_id;
+        const r = id ? State.recipes.find(x => x.id === id) : null;
+        return `<div class="tiny" style="padding:2px 0;"><span style="color:var(--ink-4);">${s[0].toUpperCase()+s.slice(1)} · </span>${r ? escapeHtml(r.title) : '—'}</div>`;
+      }).join('')}
+    </div>`;
+  });
+  html += `<div class="btn-row" style="margin-top:14px;">
+    <button class="btn block" onclick="generateMagicWeek()">Try again</button>
+    <button class="btn primary block" onclick="commitMagicWeek(${JSON.stringify(newSlots).replace(/"/g,'&quot;')})">Use this week</button>
+  </div>`;
+  openSheet('Magic week', html);
+}
+
+async function commitMagicWeek(slotsJSON) {
+  const slots = typeof slotsJSON === 'string' ? JSON.parse(slotsJSON.replace(/&quot;/g,'"')) : slotsJSON;
+  closeSheet();
+  setSync('syncing','Saving');
+  State.weekPlan.slots = slots;
+  const { error } = await State.client.from('week_plans').update({ slots, updated_at: new Date().toISOString() }).eq('id', State.weekPlan.id);
+  if (error) { toast('Failed'); setSync('offline','Error'); return; }
+  setSync('synced','Saved');
+  toast('Week generated');
+  renderWeek();
+  renderShopping();
+  renderToday();
+}
+
+// ============================================================
+// SHOPPING LIST
+// ============================================================
+async function renderShopping() {
+  const root = document.getElementById('mealsShopping');
+  if (!root) return;
+
+  // Generate from current week plan (exclude cooked)
+  const generated = generateShoppingFromWeek();
+
+  // Reconcile with stored shopping_items: keep custom items, keep checked state
+  await reconcileShoppingItems(generated);
+
+  const items = State.shoppingItems.slice().sort((a,b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  if (items.length === 0) {
+    root.innerHTML = `<div class="empty">
+      <div class="empty-title">Nothing to shop for</div>
+      <div class="empty-sub">Plan some meals first, or add custom items below.</div>
+      <button class="btn primary" onclick="addCustomShopItem()">Add custom item</button>
+    </div>`;
+    return;
+  }
+
+  const aisles = ['produce','meat','dairy','pantry','other'];
+  const aisleLabels = { produce:'Produce', meat:'Meat & fish', dairy:'Dairy', pantry:'Pantry', other:'Other' };
+  let html = `<div class="btn-row" style="margin-bottom:14px;">
+    <button class="btn block" onclick="shareShoppingList()">Share list</button>
+    <button class="btn ghost block" onclick="clearCheckedShopping()">Clear checked</button>
+  </div>`;
+  aisles.forEach(a => {
+    const aisleItems = items.filter(i => i.aisle === a);
+    if (aisleItems.length === 0) return;
+    const remaining = aisleItems.filter(i => !i.checked).length;
+    html += `<div class="aisle">
+      <div class="aisle-head"><div class="aisle-name">${aisleLabels[a]}</div><div class="aisle-count">${remaining} of ${aisleItems.length}</div></div>
+      ${aisleItems.map(i => `<div class="shop-item ${i.checked?'checked':''}" onclick="toggleShop('${i.id}')">
+        <div class="shop-check ${i.checked?'on':''}"></div>
+        <div class="shop-name">${escapeHtml(i.name)}</div>
+        ${i.quantity_display ? `<div class="shop-qty">${escapeHtml(i.quantity_display)}</div>` : ''}
+      </div>`).join('')}
+    </div>`;
+  });
+  html += `<button class="btn ghost block" style="margin-top:8px;" onclick="addCustomShopItem()">+ Add custom item</button>`;
+  root.innerHTML = html;
+}
+
+function generateShoppingFromWeek() {
+  const slots = State.weekPlan?.slots || {};
+  const tally = {}; // key: name|unit -> { name, unit, qty, aisle }
+  for (const date of Object.keys(slots)) {
+    for (const slotName of ['breakfast','lunch','dinner']) {
+      const slot = slots[date][slotName];
+      if (!slot || slot.cooked || !slot.recipe_id) continue;
+      const ings = State.ingredients[slot.recipe_id] || [];
+      ings.forEach(ing => {
+        const key = `${ing.name.toLowerCase().trim()}|${(ing.unit||'').toLowerCase()}`;
+        if (!tally[key]) tally[key] = { name: ing.name, unit: ing.unit, qty: 0, aisle: ing.category };
+        if (ing.quantity) tally[key].qty += parseFloat(ing.quantity);
+      });
+    }
+  }
+  return Object.values(tally).map(t => ({
+    name: t.name,
+    quantity_display: t.qty > 0 ? `${+t.qty.toFixed(2)}${t.unit?' '+t.unit:''}` : '',
+    aisle: t.aisle,
+    custom: false,
+  }));
+}
+
+async function reconcileShoppingItems(generated) {
+  // existing: keep custom + keep checked state for matching items
+  const existing = State.shoppingItems;
+  const keep = [];
+  const toInsert = [];
+  const toDelete = [];
+
+  // Build map of existing non-custom items by name+aisle
+  const existingMap = {};
+  existing.forEach(e => {
+    if (!e.custom) {
+      const k = `${e.name.toLowerCase()}|${e.aisle}`;
+      existingMap[k] = e;
+    } else {
+      keep.push(e);
+    }
+  });
+
+  for (const g of generated) {
+    const k = `${g.name.toLowerCase()}|${g.aisle}`;
+    if (existingMap[k]) {
+      const e = existingMap[k];
+      // update qty_display if different
+      if (e.quantity_display !== g.quantity_display) {
+        await State.client.from('shopping_items').update({ quantity_display: g.quantity_display, updated_at: new Date().toISOString() }).eq('id', e.id);
+        e.quantity_display = g.quantity_display;
+      }
+      keep.push(e);
+      delete existingMap[k];
+    } else {
+      toInsert.push({
+        household_id: State.householdId,
+        week_plan_id: State.weekPlan.id,
+        name: g.name,
+        quantity_display: g.quantity_display,
+        aisle: g.aisle,
+        checked: false,
+        custom: false,
+      });
+    }
+  }
+
+  // Anything left in existingMap is no longer in the plan → delete (only if not checked, to be safe)
+  for (const e of Object.values(existingMap)) {
+    toDelete.push(e.id);
+  }
+
+  if (toInsert.length) {
+    const { data } = await State.client.from('shopping_items').insert(toInsert).select();
+    if (data) keep.push(...data);
+  }
+  if (toDelete.length) {
+    await State.client.from('shopping_items').delete().in('id', toDelete);
+  }
+  State.shoppingItems = keep;
+}
+
+async function toggleShop(id) {
+  const item = State.shoppingItems.find(i => i.id === id);
+  if (!item) return;
+  item.checked = !item.checked;
+  document.querySelectorAll(`.shop-item`).forEach(el => { /* rerender for animation */ });
+  renderShopping();
+  await State.client.from('shopping_items').update({ checked: item.checked, updated_at: new Date().toISOString() }).eq('id', id);
+}
+
+async function clearCheckedShopping() {
+  const checked = State.shoppingItems.filter(i => i.checked);
+  if (checked.length === 0) return;
+  if (!confirm(`Clear ${checked.length} checked item${checked.length===1?'':'s'}?`)) return;
+  await State.client.from('shopping_items').delete().in('id', checked.map(i => i.id));
+  State.shoppingItems = State.shoppingItems.filter(i => !i.checked);
+  renderShopping();
+}
+
+function addCustomShopItem() {
+  const html = `
+    <div class="field">
+      <label class="field-label">Item</label>
+      <input class="input" id="scName" placeholder="Olive oil" autofocus>
+    </div>
+    <div class="field">
+      <label class="field-label">Quantity (optional)</label>
+      <input class="input" id="scQty" placeholder="1 bottle">
+    </div>
+    <div class="field">
+      <label class="field-label">Aisle</label>
+      <div class="chip-group" id="scAisle">
+        ${['produce','meat','dairy','pantry','other'].map((a,i) => `<button class="chip ${i===4?'active':''}" data-a="${a}" onclick="this.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));this.classList.add('active');">${({produce:'Produce',meat:'Meat',dairy:'Dairy',pantry:'Pantry',other:'Other'})[a]}</button>`).join('')}
+      </div>
+    </div>
+    <button class="btn primary block" onclick="saveCustomShop()">Add</button>
+  `;
+  openSheet('Custom item', html);
+}
+
+async function saveCustomShop() {
+  const name = document.getElementById('scName').value.trim();
+  if (!name) return;
+  const quantity_display = document.getElementById('scQty').value.trim() || null;
+  const aisle = document.querySelector('#scAisle .chip.active')?.dataset.a || 'other';
+  closeSheet();
+  const { data } = await State.client.from('shopping_items').insert({
+    household_id: State.householdId,
+    week_plan_id: State.weekPlan.id,
+    name, quantity_display, aisle, custom: true,
+  }).select().single();
+  if (data) State.shoppingItems.push(data);
+  renderShopping();
+}
+
+function shareShoppingList() {
+  const aisles = ['produce','meat','dairy','pantry','other'];
+  const aisleLabels = { produce:'Produce', meat:'Meat & fish', dairy:'Dairy', pantry:'Pantry', other:'Other' };
+  let text = 'Shopping list\n\n';
+  aisles.forEach(a => {
+    const items = State.shoppingItems.filter(i => i.aisle === a && !i.checked);
+    if (items.length === 0) return;
+    text += `${aisleLabels[a]}\n`;
+    items.forEach(i => { text += `· ${i.name}${i.quantity_display ? ' — ' + i.quantity_display : ''}\n`; });
+    text += '\n';
+  });
+  if (navigator.share) {
+    navigator.share({ title:'Shopping list', text }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(text).then(()=>toast('Copied to clipboard'));
+  }
+}
+
+// ============================================================
+// PROFILE
+// ============================================================
+function renderProfile() {
+  const root = document.getElementById('profileContent');
+  if (!root) return;
+  let html = '';
+
+  State.members.forEach(m => {
+    html += `<div class="member-card" data-member-card="${m.slot}">
+      <div class="mc-head">
+        <div class="mc-name">${escapeHtml(m.display_name)}</div>
+        <button class="card-action" onclick="openMemberEditor('${m.id}')">Edit</button>
+      </div>
+      <div class="mc-row"><span class="k">Life goal</span><span class="v">${m.life_goal_title ? escapeHtml(m.life_goal_title) + (m.life_goal_date ? ` · ${shortDate(m.life_goal_date)}` : '') : '—'}</span></div>
+      <div class="mc-row"><span class="k">Weight goal</span><span class="v">${m.weight_goal_kg ? m.weight_goal_kg + ' kg' : '—'}</span></div>
+      <div class="mc-row"><span class="k">Weekly sessions</span><span class="v">${m.weekly_session_target}</span></div>
+    </div>`;
+  });
+
+  // Settings
+  const s = State.settings || {};
+  html += `<div class="card" style="margin-top:14px;">
+    <div class="card-eyebrow"><span class="eyebrow">Household settings</span></div>
+    <div class="mc-row" style="margin-top:8px;"><span class="k">Theme</span>
+      <select class="select" style="width:auto;padding:6px 28px 6px 10px;font-size:13px;" onchange="updateSetting('theme', this.value)">
+        <option value="auto" ${s.theme==='auto'?'selected':''}>Auto</option>
+        <option value="light" ${s.theme==='light'?'selected':''}>Light</option>
+        <option value="dark" ${s.theme==='dark'?'selected':''}>Dark</option>
+      </select>
+    </div>
+    <div class="mc-row"><span class="k">Week starts on</span>
+      <select class="select" style="width:auto;padding:6px 28px 6px 10px;font-size:13px;" onchange="updateSetting('week_starts_on', parseInt(this.value,10))">
+        <option value="1" ${s.week_starts_on===1?'selected':''}>Monday</option>
+        <option value="0" ${s.week_starts_on===0?'selected':''}>Sunday</option>
+      </select>
+    </div>
+    <div class="mc-row"><span class="k">Claude API key</span>
+      <button class="card-action" onclick="editApiKey()">${s.claude_api_key ? '••• set' : 'Off'}</button>
+    </div>
+  </div>`;
+
+  // Data
+  html += `<div class="card">
+    <div class="card-eyebrow"><span class="eyebrow">Data</span></div>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="exportAll()">Export everything</button>
+  </div>`;
+
+  // Account
+  const me = activeMember();
+  html += `<div class="card">
+    <div class="card-eyebrow"><span class="eyebrow">This device</span></div>
+    <div class="mc-row" style="margin-top:8px;"><span class="k">Signed in as</span><span class="v">${me ? escapeHtml(me.display_name) : '—'}</span></div>
+    <div class="mc-row"><span class="k">Email</span><span class="v" style="font-size:12px;">${escapeHtml(State.user.email)}</span></div>
+    <button class="btn ghost block" style="margin-top:10px;" onclick="switchDeviceIdentity()">I'm not ${me ? escapeHtml(me.display_name) : '—'}</button>
+    <button class="btn ghost block" style="margin-top:6px;" onclick="signOut()">Sign out</button>
+  </div>`;
+
+  html += `<div class="tiny" style="text-align:center;padding:20px 0 0;">Household v1.1 · Add this app to your home screen for the best experience.</div>`;
+
+  root.innerHTML = html;
+  applyTheme();
+}
+
+function applyTheme() {
+  const t = State.settings?.theme || 'auto';
+  if (t === 'auto') {
+    document.documentElement.removeAttribute('data-theme');
+    // honour OS
+    if (matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } else {
+    document.documentElement.setAttribute('data-theme', t);
+  }
+}
+
+async function updateSetting(key, value) {
+  State.settings[key] = value;
+  await State.client.from('settings').update({ [key]: value, updated_at: new Date().toISOString() }).eq('household_id', State.householdId);
+  applyTheme();
+  renderAll();
+}
+
+function editApiKey() {
+  const current = State.settings?.claude_api_key || '';
+  const html = `
+    <div class="tiny" style="margin-bottom:14px;">Optional. Used only for recipe calorie/protein estimation in the recipe editor. Get a key from <strong>console.anthropic.com</strong>. Stored in your household's Supabase row.</div>
+    <div class="field">
+      <label class="field-label">API key</label>
+      <input class="input" id="akInput" type="password" placeholder="sk-ant-..." value="${escapeHtml(current)}">
+    </div>
+    <div class="btn-row">
+      <button class="btn primary block" onclick="saveApiKey()">Save</button>
+      ${current ? `<button class="btn danger block" onclick="clearApiKey()">Remove</button>` : ''}
+    </div>
+  `;
+  openSheet('Claude API key', html);
+}
+
+async function saveApiKey() {
+  const v = document.getElementById('akInput').value.trim();
+  closeSheet();
+  State.settings.claude_api_key = v || null;
+  await State.client.from('settings').update({ claude_api_key: v || null, updated_at: new Date().toISOString() }).eq('household_id', State.householdId);
+  renderProfile();
+  toast(v ? 'Saved' : 'Removed');
+}
+
+async function clearApiKey() {
+  document.getElementById('akInput').value = '';
+  saveApiKey();
+}
+
+function openMemberEditor(memberId) {
+  const m = State.members.find(x => x.id === memberId);
+  if (!m) return;
+  const mix = m.weekly_target_mix || { ride:0, run:0, strength:0, yoga:0, walk:0, stretch:0 };
+  const goals = [
+    { id:'lose_weight', label:'Lose weight' },
+    { id:'event', label:'Train for event' },
+    { id:'general', label:'General fitness' },
+    { id:'strength', label:'Build strength' },
+    { id:'maintain', label:'Maintain' },
+  ];
+  const currentGoal = m.goal_type || 'general';
+
+  const html = `
+    <div class="field">
+      <label class="field-label">Display name</label>
+      <input class="input" id="mName" value="${escapeHtml(m.display_name)}">
+    </div>
+    <div class="field">
+      <label class="field-label">Life goal</label>
+      <input class="input" id="mGoal" placeholder="Venice 10k" value="${escapeHtml(m.life_goal_title || '')}">
+    </div>
+    <div class="field">
+      <label class="field-label">Life goal date</label>
+      <input class="input" id="mGoalDate" type="date" value="${m.life_goal_date || ''}">
+    </div>
+    <div class="field input-row">
+      <div>
+        <label class="field-label">Start weight (kg)</label>
+        <input class="input" id="mStart" type="number" inputmode="decimal" step="0.1" value="${m.weight_start_kg || ''}">
+      </div>
+      <div>
+        <label class="field-label">Goal weight (kg)</label>
+        <input class="input" id="mGoalW" type="number" inputmode="decimal" step="0.1" value="${m.weight_goal_kg || ''}">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Weekly sessions target</label>
+      <div class="stepper">
+        <button onclick="adjStep('mWk',-1)">−</button>
+        <span class="v" id="mWk">${m.weekly_session_target || 4}</span>
+        <button onclick="adjStep('mWk',1)">+</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Training goal</label>
+      <div class="chip-group" id="mGoalType">
+        ${goals.map(g => `<button class="chip ${g.id===currentGoal?'active':''}" data-g="${g.id}" onclick="this.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));this.classList.add('active');">${g.label}</button>`).join('')}
+      </div>
+      <div class="tiny" style="margin-top:6px;color:var(--ink-3);">Tells Magic Week how to fill empty days.</div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Weekly mix (Magic Week target)</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        ${['ride','run','strength','yoga','walk','stretch'].map(t => `
+          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px;">
+            <span style="font-size:13px;">${sessionTypeLabel(t)}</span>
+            <div class="stepper" style="border:none;">
+              <button style="padding:4px 8px;" onclick="adjStep('mix_${t}',-1)">−</button>
+              <span class="v" id="mix_${t}" style="min-width:24px;font-size:14px;">${parseInt(mix[t],10)||0}</span>
+              <button style="padding:4px 8px;" onclick="adjStep('mix_${t}',1)">+</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Favourite Peloton instructor</label>
+      <input class="input" id="mInstructor" placeholder="Bradley Rose" value="${escapeHtml(m.favourite_instructor || '')}">
+    </div>
+    <div class="field">
+      <label class="field-label">Peloton calendar URL</label>
+      <input class="input" id="mCalUrl" placeholder="https://calendar.google.com/calendar/ical/..." value="${escapeHtml(m.peloton_calendar_url || '')}">
+      <div class="tiny" style="margin-top:6px;color:var(--ink-3);">From Google Calendar settings → "Secret address in iCal format". Enrolled classes auto-import here.</div>
+    </div>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn primary block" onclick="saveMember('${memberId}')">Save</button>
+    </div>
+  `;
+  openSheet('Edit ' + m.display_name, html);
+}
+
+async function saveMember(id) {
+  const mix = {};
+  ['ride','run','strength','yoga','walk','stretch'].forEach(t => {
+    mix[t] = parseInt(document.getElementById('mix_' + t).textContent, 10) || 0;
+  });
+  const payload = {
+    display_name: document.getElementById('mName').value.trim() || 'Member',
+    life_goal_title: document.getElementById('mGoal').value.trim() || null,
+    life_goal_date: document.getElementById('mGoalDate').value || null,
+    weight_start_kg: parseFloat(document.getElementById('mStart').value) || null,
+    weight_goal_kg: parseFloat(document.getElementById('mGoalW').value) || null,
+    weekly_session_target: parseInt(document.getElementById('mWk').textContent, 10),
+    favourite_instructor: document.getElementById('mInstructor').value.trim() || null,
+    peloton_calendar_url: document.getElementById('mCalUrl').value.trim() || null,
+    goal_type: document.querySelector('#mGoalType .chip.active')?.dataset.g || 'general',
+    weekly_target_mix: mix,
+  };
+  closeSheet();
+  const { error } = await State.client.from('members').update(payload).eq('id', id);
+  if (error) { toast('Failed'); return; }
+  const idx = State.members.findIndex(m => m.id === id);
+  State.members[idx] = { ...State.members[idx], ...payload };
+  toast('Saved');
+  // Sync immediately if a calendar URL was set
+  if (payload.peloton_calendar_url) {
+    syncPelotonCalendars(false).catch(() => {});
+  }
+  renderAll();
+}
+
+async function exportAll() {
+  const exp = {
+    exported_at: new Date().toISOString(),
+    household_id: State.householdId,
+    members: State.members,
+    settings: { ...State.settings, claude_api_key: undefined },
+    recipes: State.recipes,
+    ingredients: State.ingredients,
+    week_plans: [State.weekPlan],
+    workouts: State.workouts,
+    weight_entries: State.weights,
+    shopping_items: State.shoppingItems,
+  };
+  const blob = new Blob([JSON.stringify(exp, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `household-export-${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Downloaded');
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+async function boot() {
+  // 1. Config (Supabase URL/key)
+  const cfg = getConfig();
+  if (!cfg) {
+    document.getElementById('configGate').classList.remove('hide');
+    return;
+  }
+
+  // 2. Init Supabase client
+  try {
+    State.client = window.supabase.createClient(cfg.url, cfg.key, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    });
+  } catch (e) {
+    document.getElementById('configGate').classList.remove('hide');
+    document.getElementById('cfgError').textContent = 'Could not initialise. Check your URL and key.';
+    document.getElementById('cfgError').classList.remove('hide');
+    return;
+  }
+
+  // 3. Listen for auth changes
+  State.client.auth.onAuthStateChange((event, session) => {
+    if (session?.user) {
+      State.user = session.user;
+      document.getElementById('authGate').classList.add('hide');
+      document.getElementById('app').classList.remove('hide');
+      loadAll();
+    } else {
+      State.user = null;
+      document.getElementById('app').classList.add('hide');
+      document.getElementById('authGate').classList.remove('hide');
+    }
+  });
+
+  // 4. Check existing session
+  const { data: { session } } = await State.client.auth.getSession();
+  if (session?.user) {
+    State.user = session.user;
+    document.getElementById('app').classList.remove('hide');
+    loadAll();
+  } else {
+    document.getElementById('authGate').classList.remove('hide');
+  }
+}
+
+boot();
+
+// Honour OS theme changes
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme());
+
+// Quiet calendar resync when the app regains focus
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && State.householdId) autoSyncIfDue();
+});
+</script>
+
+</body>
+</html>
