@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Household">
-<meta name="theme-color" content="#f6f7f5">
+<meta name="theme-color" content="#0c0f14">
 <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Household%22%2C%22short_name%22%3A%22Household%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f6f7f5%22%2C%22theme_color%22%3A%22%23f6f7f5%22%2C%22share_target%22%3A%7B%22action%22%3A%22.%2F%22%2C%22method%22%3A%22GET%22%2C%22params%22%3A%7B%22title%22%3A%22title%22%2C%22text%22%3A%22text%22%2C%22url%22%3A%22url%22%7D%7D%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%3Bcharset%3Dutf-8%2C%253Csvg%2520xmlns%253D%2522http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2522%2520viewBox%253D%25220%25200%2520192%2520192%2522%253E%253Crect%2520width%253D%2522192%2522%2520height%253D%2522192%2522%2520rx%253D%252242%2522%2520fill%253D%2522%2523f6f7f5%2522%252F%253E%253Cpath%2520d%253D%2522M50%252070%2520L96%252050%2520L142%252070%2520L142%2520140%2520L96%2520120%2520L50%2520140%2520Z%2522%2520fill%253D%2522none%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%2520stroke-linejoin%253D%2522round%2522%252F%253E%253Cpath%2520d%253D%2522M96%252050%2520L96%2520120%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%252F%253E%253Ccircle%2520cx%253D%252272%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%25231f3a72%2522%252F%253E%253Ccircle%2520cx%253D%2522120%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%2523c8392a%2522%252F%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
 <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='36' fill='%23f6f7f5'/><line x1='36' y1='135' x2='144' y2='135' stroke='%231c2820' stroke-width='1' opacity='0.3'/><g transform='translate(60 75)'><circle cx='0' cy='0' r='7' fill='%23c8392a'/><path d='M -2 8 L 2 32' stroke='%23c8392a' stroke-width='5' stroke-linecap='round'/><path d='M 2 14 L 10 22' stroke='%23c8392a' stroke-width='3.5' stroke-linecap='round'/><path d='M -2 14 L -10 8' stroke='%23c8392a' stroke-width='3.5' stroke-linecap='round'/><path d='M 2 32 L 11 50' stroke='%23c8392a' stroke-width='4' stroke-linecap='round'/><path d='M 2 32 L -9 46' stroke='%23c8392a' stroke-width='4' stroke-linecap='round'/></g><g transform='translate(112 75)'><circle cx='0' cy='0' r='7' fill='%231f3a72'/><path d='M -2 8 L 2 32' stroke='%231f3a72' stroke-width='5' stroke-linecap='round'/><path d='M 2 14 L 10 22' stroke='%231f3a72' stroke-width='3.5' stroke-linecap='round'/><path d='M -2 14 L -10 8' stroke='%231f3a72' stroke-width='3.5' stroke-linecap='round'/><path d='M 2 32 L 11 50' stroke='%231f3a72' stroke-width='4' stroke-linecap='round'/><path d='M 2 32 L -9 46' stroke='%231f3a72' stroke-width='4' stroke-linecap='round'/></g></svg>">
 <title>Household</title>
@@ -20,37 +20,38 @@
    Aged ivory · forest ink · indigo · pressed-flower coral · moss
 ============================================================ */
 :root {
-  /* Paper & ink — v3: cool off-white page, warm off-white card. Content is hero. */
-  --paper: #f6f7f5;        /* page background — cool off-white, very faint green tint to harmonise with --ink */
-  --paper-2: #ecedea;      /* slightly darker surfaces (week-day pill, etc) */
-  --paper-3: #e0e2de;      /* edges, separators */
-  --card: #fbf6e8;         /* card surface — warm off-white, the old ivory now lives here */
-  --ink: #161d18;          /* near-black with a hint of forest */
-  --ink-2: #36433a;        /* sub-headings */
-  --ink-3: #6d7669;        /* body muted */
-  --ink-4: #a5a89c;        /* hint, eyebrow */
-  --line: rgba(22,29,24,0.09);
-  --line-2: rgba(22,29,24,0.16);
+  /* Athletic dark — near-black page, raised charcoal cards, electric accent. */
+  --paper: #0c0f14;        /* page background — near black */
+  --paper-2: #141922;      /* card / surface */
+  --paper-3: #1c2230;      /* raised surfaces, inputs, pills */
+  --card: #141922;         /* card surface */
+  --ink: #f4f6f8;          /* primary text — near white */
+  --ink-2: #c2c9d4;        /* sub-headings */
+  --ink-3: #7b8595;        /* body muted */
+  --ink-4: #525c6b;        /* hint, eyebrow */
+  --line: rgba(255,255,255,0.07);
+  --line-2: rgba(255,255,255,0.14);
 
-  /* Member accents — pushed further, real punctuation now that the page is white-cool */
-  --indigo: #1f3a72;        /* Lachlan default — deeper, cleaner */
-  --indigo-soft: #d8dfec;
-  --indigo-deep: #122452;
-  --coral: #c8392a;         /* Christine default — cleaner red-coral, less brown */
-  --coral-soft: #f4d2cc;
-  --coral-deep: #8a2418;
+  /* ====== ACCENT — change this one block to retheme the whole app ====== */
+  --accent: #c2ff4d;        /* electric lime — the single hero colour */
+  --accent-deep: #a5e02f;   /* pressed / darker accent */
+  --accent-soft: rgba(194,255,77,0.12);  /* faint accent wash */
+  --accent-ink: #0c0f14;    /* text that sits ON the accent (dark) */
 
-  /* Semantic */
-  --moss: #5a7244;          /* done, success */
-  --moss-soft: #d8e1c8;
-  --thistle: #8e6f9c;       /* attention */
-  --rust: #a04e1e;          /* warning */
-  --bramble: #7a2b2b;       /* danger */
+  /* legacy member-accent names kept pointing at the accent so old CSS still works */
+  --indigo: var(--accent);
+  --indigo-soft: var(--accent-soft);
+  --indigo-deep: var(--accent-deep);
+  --coral: var(--accent);
+  --coral-soft: var(--accent-soft);
+  --coral-deep: var(--accent-deep);
 
-  /* Active accent (set per-member via data-member attr) */
-  --accent: var(--indigo);
-  --accent-soft: var(--indigo-soft);
-  --accent-deep: var(--indigo-deep);
+  /* Semantic — tuned for dark */
+  --moss: #5de0a0;          /* done, success */
+  --moss-soft: rgba(93,224,160,0.14);
+  --thistle: #b79be0;       /* attention */
+  --rust: #ffb84d;          /* warning */
+  --bramble: #ff6b6b;       /* danger */
 
   --radius-sm: 6px;
   --radius: 10px;
@@ -64,31 +65,23 @@
   --dur-slow: 360ms;
 }
 
-/* member accent override — set when user identifies as a/b */
-[data-member="a"] {
-  --accent: var(--coral);
-  --accent-soft: var(--coral-soft);
-  --accent-deep: var(--coral-deep);
-}
-[data-member="b"] {
-  --accent: var(--indigo);
-  --accent-soft: var(--indigo-soft);
-  --accent-deep: var(--indigo-deep);
+/* single-user now — member overrides collapse to the one accent (no colour flip) */
+[data-member="a"], [data-member="b"] {
+  --accent: var(--accent);
 }
 
+/* App is dark by default; light toggle is a no-op for now (athletic-dark only). */
 [data-theme="dark"] {
-  --paper: #161a17;
-  --paper-2: #1d2220;
-  --paper-3: #262c29;
-  --card: #1d2220;
-  --ink: #e8e4d4;
-  --ink-2: #c5c2b1;
-  --ink-3: #8e9285;
-  --ink-4: #5e6259;
-  --line: rgba(232,228,212,0.08);
-  --line-2: rgba(232,228,212,0.16);
-  --indigo-soft: #2a3447;
-  --coral-soft: #4a2d27;
+  --paper: #0c0f14;
+  --paper-2: #141922;
+  --paper-3: #1c2230;
+  --card: #141922;
+  --ink: #f4f6f8;
+  --ink-2: #c2c9d4;
+  --ink-3: #7b8595;
+  --ink-4: #525c6b;
+  --line: rgba(255,255,255,0.07);
+  --line-2: rgba(255,255,255,0.14);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -578,7 +571,7 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 }
 .btn:active { transform: scale(0.98); }
 .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.btn.accent { background: var(--accent); color: white; border-color: var(--accent); }
+.btn.accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .btn.ghost { background: transparent; border-color: var(--line); }
 .btn.danger { color: var(--bramble); }
 .btn.block { width: 100%; }
@@ -592,7 +585,7 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(251,248,243,0.92);
+  background: rgba(12,15,20,0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--line);
@@ -1230,7 +1223,7 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
       <svg viewBox="0 0 24 24"><path d="M4 14h2l2-8 4 12 2-6h6"/></svg>
       <span>Exercise</span>
     </button>
-    <button class="tab" data-screen="meals" onclick="switchScreen('meals')">
+    <button class="tab" data-screen="meals" onclick="switchScreen('meals')" style="display:none;">
       <svg viewBox="0 0 24 24"><path d="M5 4v8a4 4 0 0 0 4 4v4"/><path d="M9 4v6"/><path d="M13 4v6"/><path d="M17 4c0 4-1 6-3 6 0 4 1 6 3 6v4"/></svg>
       <span>Meals</span>
     </button>
