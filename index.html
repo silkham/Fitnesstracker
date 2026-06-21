@@ -1295,6 +1295,11 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 
+// Baked-in defaults so no device ever has to paste config.
+// The anon key is public by design — data is protected by Supabase Row Level Security.
+const DEFAULT_SUPABASE_URL = 'https://dgbbyijhabjozqrkokrq.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRnYmJ5aWpoYWJqb3pxcmtva3JxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMTA2ODgsImV4cCI6MjA5NDU4NjY4OH0.0VnZVRXNexVQBoYFrVXtGo9Ep-Gdv_04jGcX9NQLcE0';
+
 // ============================================================
 // NHS COUCH TO 5K — 9 week prescriptions
 // Source: nhs.uk/better-health/get-active/get-running-with-couch-to-5k
@@ -1328,7 +1333,15 @@ function c25kPrescription(weekNum, runNum) {
 }
 
 function getConfig() {
-  try { return JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { return null; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
+    if (saved && saved.url && saved.key) return saved;
+  } catch {}
+  // Fall back to baked-in defaults so the config gate never appears.
+  if (DEFAULT_SUPABASE_URL && DEFAULT_SUPABASE_KEY) {
+    return { url: DEFAULT_SUPABASE_URL, key: DEFAULT_SUPABASE_KEY };
+  }
+  return null;
 }
 function setConfig(url, key) {
   localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
