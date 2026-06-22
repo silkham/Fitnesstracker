@@ -173,18 +173,8 @@ input, textarea { -webkit-appearance: none; appearance: none; }
   backdrop-filter: blur(14px) saturate(1.15);
   border-color: var(--glass-line);
 }
-/* shimmer sweep on the primary accent button */
-.btn.accent { position: relative; overflow: hidden; }
-.btn.accent::after {
-  content: '';
-  position: absolute;
-  top: 0; left: -60%;
-  width: 50%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-  transform: skewX(-20deg);
-  animation: btnShimmer 3.4s ease-in-out infinite;
-}
-@keyframes btnShimmer { 0% { left: -60%; } 55%, 100% { left: 140%; } }
+/* belt-and-braces: force the accent button to stay a solid emerald fill */
+.btn.accent { background-color: var(--accent) !important; color: var(--accent-ink) !important; }
 
 .screen { display: none; padding: 16px; }
 .screen.active { display: block; animation: fadeIn var(--dur) var(--ease-settle); }
@@ -3052,8 +3042,8 @@ function renderSparkline(weights) {
   const pathD = points.map((pt, i) => (i === 0 ? 'M' : 'L') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
   const areaD = pathD + ` L ${(w-p).toFixed(1)} ${h-p} L ${p} ${h-p} Z`;
   return `<svg class="spark-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <path class="area" d="${areaD}"/>
-    <path d="${pathD}"/>
+    <path class="area" fill="var(--accent)" fill-opacity="0.18" stroke="none" d="${areaD}"/>
+    <path fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="${pathD}"/>
   </svg>`;
 }
 
@@ -3075,9 +3065,9 @@ function renderWeightChart(weights, goal) {
   const areaD = pathD + ` L ${(w - px).toFixed(1)} ${h - py} L ${px} ${h - py} Z`;
   const goalY = goal != null ? yFor(goal).toFixed(1) : null;
   return `<svg class="spark-svg" style="height:130px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <path class="area" d="${areaD}"/>
+    <path class="area" fill="var(--accent)" fill-opacity="0.18" stroke="none" d="${areaD}"/>
     ${goalY != null ? `<line x1="${px}" y1="${goalY}" x2="${w - px}" y2="${goalY}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` : ''}
-    <path d="${pathD}"/>
+    <path fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="${pathD}"/>
   </svg>`;
 }
 
