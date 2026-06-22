@@ -29,6 +29,19 @@ function parseDate(s: unknown): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Map an Apple Health / Peloton workout name to a canonical type the
+// workouts.session_type check constraint accepts (ride/run/strength/yoga/stretch/walk/other/rest).
+function normType(name: unknown): string {
+  const s = String(name ?? "").toLowerCase();
+  if (s.includes("ride") || s.includes("cycl") || s.includes("bike") || s.includes("spin")) return "ride";
+  if (s.includes("strength") || s.includes("functional") || s.includes("core") || s.includes("arms") || s.includes("legs") || s.includes("pilates")) return "strength";
+  if (s.includes("yoga")) return "yoga";
+  if (s.includes("stretch") || s.includes("mobility") || s.includes("cool down")) return "stretch";
+  if (s.includes("walk") || s.includes("hik")) return "walk";
+  if (s.includes("run")) return "run";
+  return "other";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "GET") return json({ ok: true, service: "health-ingest" });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -64,7 +77,8 @@ Deno.serve(async (req) => {
       household_id: HOUSEHOLD_ID,
       member_id: MEMBER_ID,
       planned_for,
-      session_type: w.name ?? w.type ?? "other",
+      session_type: normType(w.name ?? w.type),
+      class_title: w.name ?? w.type ?? null, // keep Apple's original label as the subtitle
       duration_min,
       status: "done",
       source: "apple_health",
