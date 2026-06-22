@@ -9,7 +9,8 @@
       "Bash(python3)",
       "Bash(git add *)",
       "Bash(git commit -q -m 'Redesign core: athletic dashboard, Weight tab, new nav, Archivo type *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }
