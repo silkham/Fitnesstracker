@@ -1148,6 +1148,67 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 }
 .config-card strong { color: var(--ink); }
 
+/* ============================================================
+   MEALS — simple weekly planner
+============================================================ */
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.week-nav-btn {
+  width: 40px; height: 40px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.week-nav-btn:active { background: var(--paper-3); }
+.week-nav-label {
+  flex: 1;
+  text-align: center;
+  font-family: 'Archivo','Archivo Expanded',sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.week-nav-label .sub { display: block; font-size: 11px; color: var(--ink-4); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+
+.meal-day { padding: 14px 16px; }
+.meal-day.today { border-color: var(--accent); }
+.meal-day-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.meal-day-name { font-family: 'Archivo','Archivo Expanded',sans-serif; font-size: 15px; font-weight: 700; color: var(--ink); }
+.meal-day-name .date { font-size: 11px; color: var(--ink-4); margin-left: 6px; font-weight: 500; }
+
+.meal-slot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0;
+  cursor: pointer;
+  border-top: 1px solid var(--line);
+}
+.meal-slot:first-of-type { border-top: none; }
+.meal-slot-label {
+  font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-4); font-weight: 600; width: 58px; flex-shrink: 0;
+}
+.meal-slot.dinner .meal-slot-label { color: var(--accent); }
+.meal-slot-val { flex: 1; min-width: 0; font-size: 14px; color: var(--ink-2); line-height: 1.35; }
+.meal-slot.dinner .meal-slot-val { font-size: 15.5px; color: var(--ink); font-weight: 600; }
+.meal-slot-val.empty { color: var(--ink-4); font-style: italic; }
+.meal-slot-val .src { display: block; font-size: 11.5px; color: var(--ink-4); font-style: normal; font-weight: 400; margin-top: 1px; }
+.meal-slot-link {
+  flex-shrink: 0; color: var(--accent); font-size: 16px; padding: 4px 6px;
+}
+.meal-slot-add { flex-shrink: 0; color: var(--ink-4); font-size: 18px; padding: 0 4px; }
+
 /* utility */
 .spacer-sm { height: 8px; }
 .spacer-md { height: 16px; }
@@ -1258,26 +1319,23 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
     </div>
   </section>
 
-  <!-- ============== MEALS ============== -->
+  <!-- ============== MEALS (simple weekly planner) ============== -->
   <section class="screen" id="screen-meals">
     <div class="greeting" style="padding-bottom: 8px;">
-      <h1 class="display">Meals</h1>
-      <div class="greeting-sub">Vault · week · shopping</div>
+      <h1 class="display"><em>Meals</em></h1>
+      <div class="greeting-sub">Plan the week's dinners</div>
     </div>
 
-    <div class="segmented">
-      <button class="active" data-meal-tab="week" onclick="switchMealTab('week')">Week</button>
-      <button data-meal-tab="vault" onclick="switchMealTab('vault')">Vault</button>
-      <button data-meal-tab="shopping" onclick="switchMealTab('shopping')" style="display:none;">Shopping</button>
+    <div class="week-nav">
+      <button class="week-nav-btn" onclick="mealWeekNav(-1)" aria-label="Previous week">‹</button>
+      <div class="week-nav-label" id="mealWeekLabel">—</div>
+      <button class="week-nav-btn" onclick="mealWeekNav(1)" aria-label="Next week">›</button>
     </div>
 
-    <div id="mealsVault" class="hide"></div>
-    <div id="mealsWeek">
-      <div class="skel skel-btn" style="width:100%;margin-bottom:14px;"></div>
+    <div id="mealsContent">
       <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>
       <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>
     </div>
-    <div id="mealsShopping" class="hide"></div>
   </section>
 
   <!-- ============== PROFILE ============== -->
@@ -1307,7 +1365,7 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
       <svg viewBox="0 0 24 24"><path d="M4 19h16M5 19l3-10h8l3 10M9 9V7a3 3 0 0 1 6 0v2"/></svg>
       <span>Weight</span>
     </button>
-    <button class="tab" data-screen="meals" onclick="switchScreen('meals')" style="display:none;">
+    <button class="tab" data-screen="meals" onclick="switchScreen('meals')">
       <svg viewBox="0 0 24 24"><path d="M5 4v8a4 4 0 0 0 4 4v4"/><path d="M9 4v6"/><path d="M13 4v6"/><path d="M17 4c0 4-1 6-3 6 0 4 1 6 3 6v4"/></svg>
       <span>Meals</span>
     </button>
@@ -1359,6 +1417,8 @@ const State = {
   weights: [],          // all weight entries (history)
   strengthSets: [],     // strength_sets rows (history)
   shoppingItems: [],
+  mealPlan: null,       // week_plans row currently shown in the Meals tab
+  mealWeekStart: null,  // ISO Monday of the meals tab's viewed week
   mealsTab: 'week',
   vaultCategory: 'dinner',
   personalSlots: [],    // meal_slots_personal rows for current user
@@ -1625,6 +1685,8 @@ async function loadAll() {
     State.workouts = workouts.data || [];
     State.weekPlan = weekPlan;
     State.weekStart = weekPlan.week_start;
+    State.mealPlan = weekPlan;
+    State.mealWeekStart = weekPlan.week_start;
 
     // load strength sets (last 120 days). Resilient: table may not exist yet.
     try {
@@ -2659,6 +2721,7 @@ function renderAll() {
   renderToday();
   renderExercise();
   renderWeight();
+  renderMeals();
   renderProfile();
   // Post-render: animate any [data-num-id] spans whose value changed
   animateChangedNumbers();
@@ -2848,7 +2911,27 @@ function renderToday() {
     </div>`;
   }
 
+  // ---- Tonight's dinner (from the meal planner) ----
+  {
+    const dinner = normMealSlot((State.weekPlan?.slots?.[today] || {}).dinner);
+    const hasDinner = dinner && (dinner.name || dinner.source || dinner.url);
+    html += `<div class="card tappable" onclick="openTonightDinner()">
+      <div class="card-row" style="margin-bottom:4px;">
+        <span class="eyebrow">Tonight's dinner</span>
+        ${hasDinner && dinner.url ? `<span class="meal-slot-link" onclick="event.stopPropagation();openMealUrl('${encodeURIComponent(dinner.url)}')">↗</span>` : ''}
+      </div>
+      <div class="wc-title" style="font-size:16px;">${hasDinner ? (dinner.name ? escapeHtml(dinner.name) : '(no name)') : 'Nothing planned'}</div>
+      <div class="wc-sub">${hasDinner && dinner.source ? escapeHtml(dinner.source) : (hasDinner ? '' : 'Tap to plan tonight')}</div>
+    </div>`;
+  }
+
   document.getElementById('todayContent').innerHTML = html;
+}
+
+// Open tonight's dinner editor, ensuring the meals tab is on the current week first.
+async function openTonightDinner() {
+  if (State.mealWeekStart !== State.weekStart) await loadMealWeek(State.weekStart);
+  openMealEditor(todayISO(), 'dinner');
 }
 
 // Momentum framing for the weight card on the dashboard.
@@ -4972,6 +5055,200 @@ function shareShoppingList() {
     navigator.share({ title:'Shopping list', text }).catch(()=>{});
   } else {
     navigator.clipboard.writeText(text).then(()=>toast('Copied to clipboard'));
+  }
+}
+
+// ============================================================
+// MEALS — simple weekly planner (name + source + optional link)
+// Stored in week_plans.slots[dateISO][slot] = { name, source, url }
+// ============================================================
+let _mealEdit = { date: null, slot: null };
+
+// Normalise a stored slot (handles the new simple shape and legacy recipe shapes)
+function normMealSlot(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if ('name' in raw || 'url' in raw || 'source' in raw) {
+    return { name: raw.name || '', source: raw.source || '', url: raw.url || '' };
+  }
+  if (raw.recipe_id) {
+    const r = (State.recipes || []).find(x => x.id === raw.recipe_id);
+    return { name: r ? r.title : '', source: '', url: '' };
+  }
+  if (raw.mindful_chef) return { name: 'Mindful Chef', source: '', url: '' };
+  return null;
+}
+
+function mealDayName(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' }); }
+function mealShortDate(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
+
+function mealWeekRangeLabel(weekStart) {
+  const start = new Date(weekStart + 'T00:00:00');
+  const end = new Date(isoDateAddDays(weekStart, 6) + 'T00:00:00');
+  const fmt = (dt) => dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const thisMon = weekStartFor(new Date());
+  let rel = '';
+  if (weekStart === thisMon) rel = 'This week';
+  else if (weekStart === isoDateAddDays(thisMon, 7)) rel = 'Next week';
+  else if (weekStart === isoDateAddDays(thisMon, -7)) rel = 'Last week';
+  return `${fmt(start)} – ${fmt(end)}${rel ? `<span class="sub">${rel}</span>` : ''}`;
+}
+
+function renderMeals() {
+  const plan = State.mealPlan;
+  const weekStart = State.mealWeekStart;
+  const root = document.getElementById('mealsContent');
+  const labelEl = document.getElementById('mealWeekLabel');
+  if (!root) return;
+  if (!plan || !weekStart) { root.innerHTML = ''; return; }
+  if (labelEl) labelEl.innerHTML = mealWeekRangeLabel(weekStart);
+
+  const slots = plan.slots || {};
+  const today = todayISO();
+  const days = Array.from({ length: 7 }, (_, i) => isoDateAddDays(weekStart, i));
+  const order = [['dinner', 'Dinner'], ['lunch', 'Lunch'], ['breakfast', 'Breakfast']];
+
+  root.innerHTML = days.map(d => {
+    const isToday = d === today;
+    const dayslots = slots[d] || {};
+    const rows = order.map(([key, label]) => {
+      const mealObj = normMealSlot(dayslots[key]);
+      const filled = mealObj && (mealObj.name || mealObj.url || mealObj.source);
+      const right = (mealObj && mealObj.url)
+        ? `<span class="meal-slot-link" onclick="event.stopPropagation();openMealUrl('${encodeURIComponent(mealObj.url)}')">↗</span>`
+        : `<span class="meal-slot-add">${filled ? '' : '+'}</span>`;
+      const val = filled
+        ? `${mealObj.name ? escapeHtml(mealObj.name) : '<span style="color:var(--ink-4);">(no name)</span>'}${mealObj.source ? `<span class="src">${escapeHtml(mealObj.source)}</span>` : ''}`
+        : 'Tap to add';
+      return `<div class="meal-slot ${key}" onclick="openMealEditor('${d}','${key}')">
+        <span class="meal-slot-label">${label}</span>
+        <span class="meal-slot-val ${filled ? '' : 'empty'}">${val}</span>
+        ${right}
+      </div>`;
+    }).join('');
+    return `<div class="card meal-day ${isToday ? 'today' : ''}">
+      <div class="meal-day-head">
+        <span class="meal-day-name">${mealDayName(d)} <span class="date">${mealShortDate(d)}</span></span>
+        ${isToday ? '<span class="badge">Today</span>' : ''}
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function openMealUrl(enc) {
+  const u = decodeURIComponent(enc);
+  if (u) window.open(u, '_blank');
+}
+
+async function mealWeekNav(delta) {
+  if (!State.mealWeekStart) return;
+  await loadMealWeek(isoDateAddDays(State.mealWeekStart, delta * 7));
+}
+
+async function loadMealWeek(weekStart) {
+  setSync('syncing', 'Loading');
+  try {
+    const plan = (weekStart === State.weekStart && State.weekPlan)
+      ? State.weekPlan
+      : await getOrCreateWeekPlan(weekStart);
+    State.mealPlan = plan;
+    State.mealWeekStart = weekStart;
+    setSync('synced', 'Synced');
+    renderMeals();
+  } catch (e) {
+    setSync('offline', 'Error');
+    toast('Could not load that week');
+  }
+}
+
+function openMealEditor(dateISO, slot) {
+  _mealEdit = { date: dateISO, slot };
+  const cur = normMealSlot((State.mealPlan?.slots?.[dateISO] || {})[slot]) || { name: '', source: '', url: '' };
+  const slotLabel = slot[0].toUpperCase() + slot.slice(1);
+  const html = `
+    <div class="field">
+      <label class="field-label">Meal</label>
+      <input class="input" id="mName" placeholder="e.g. Butter chicken" value="${escapeHtml(cur.name)}" autocomplete="off">
+    </div>
+    <div class="field">
+      <label class="field-label">From — cookbook, RecipeTin…</label>
+      <input class="input" id="mSource" placeholder="Ottolenghi p.120" value="${escapeHtml(cur.source)}" autocomplete="off">
+    </div>
+    <div class="field">
+      <label class="field-label">Link (optional)</label>
+      <input class="input" id="mUrl" inputmode="url" placeholder="https://…" value="${escapeHtml(cur.url)}" autocomplete="off">
+      <button class="btn ghost block" style="margin-top:8px;" id="mFetchBtn" onclick="fetchMealNameFromUrl()">Get name from link</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn accent block" onclick="saveMealSlot()">Save</button>
+    </div>
+    ${(cur.name || cur.source || cur.url) ? `<button class="btn danger block" style="margin-top:8px;" onclick="clearMealSlot()">Clear</button>` : ''}
+  `;
+  openSheet(`${mealDayName(dateISO)} · ${slotLabel}`, html);
+}
+
+async function saveMealSlot() {
+  const { date, slot } = _mealEdit;
+  if (!date || !slot) return;
+  const name = (document.getElementById('mName').value || '').trim();
+  const source = (document.getElementById('mSource').value || '').trim();
+  let url = (document.getElementById('mUrl').value || '').trim();
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  closeSheet();
+  await writeMealSlot(date, slot, (name || source || url) ? { name, source, url } : null);
+}
+
+async function clearMealSlot() {
+  const { date, slot } = _mealEdit;
+  closeSheet();
+  await writeMealSlot(date, slot, null);
+}
+
+async function writeMealSlot(date, slot, value) {
+  const plan = State.mealPlan;
+  if (!plan) return;
+  const slots = JSON.parse(JSON.stringify(plan.slots || {}));
+  if (!slots[date]) slots[date] = {};
+  if (value) slots[date][slot] = value; else delete slots[date][slot];
+  if (Object.keys(slots[date]).length === 0) delete slots[date];
+  setSync('syncing', 'Saving');
+  const { error } = await State.client.from('week_plans').update({ slots, updated_at: new Date().toISOString() }).eq('id', plan.id);
+  if (error) { toast('Save failed'); setSync('offline', 'Error'); return; }
+  plan.slots = slots;
+  if (State.weekPlan && State.weekPlan.id === plan.id) State.weekPlan.slots = slots;
+  setSync('synced', 'Saved');
+  toast(value ? 'Saved' : 'Cleared');
+  renderMeals();
+  if (document.getElementById('screen-today').classList.contains('active')) renderToday();
+}
+
+// Best-effort: read a recipe page's title via a CORS-friendly reader, fill the name.
+async function fetchMealNameFromUrl() {
+  let url = (document.getElementById('mUrl').value || '').trim();
+  if (!url) { toast('Paste a link first'); return; }
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  const btn = document.getElementById('mFetchBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
+  try {
+    const res = await fetch('https://r.jina.ai/' + url, { headers: { 'Accept': 'text/plain' } });
+    if (!res.ok) throw new Error('bad');
+    const text = await res.text();
+    let name = null;
+    const tm = text.match(/^Title:\s*(.+)$/m);
+    if (tm) name = tm[1].trim();
+    if (!name) { const h = text.match(/^#\s+(.+)$/m); if (h) name = h[1].trim(); }
+    if (name) {
+      name = name.split(/\s+[|·–—]\s+/)[0].trim();
+      const f = document.getElementById('mName');
+      if (f && !f.value.trim()) f.value = name;
+      toast('Name added — check it');
+    } else {
+      toast('Couldn’t read that — type the name');
+    }
+  } catch (e) {
+    toast('Couldn’t read that link — type the name');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Get name from link'; }
   }
 }
 

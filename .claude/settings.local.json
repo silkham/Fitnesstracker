@@ -10,7 +10,8 @@
       "Bash(git add *)",
       "Bash(git commit -q -m 'Redesign core: athletic dashboard, Weight tab, new nav, Archivo type *)",
       "Bash(git push *)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(git commit -q -m 'Add simple weekly meal planner \\(name + source + link\\) *)"
     ]
   }
 }
