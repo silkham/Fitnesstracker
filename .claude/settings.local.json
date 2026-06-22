@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__visualize__show_widget",
+      "Bash(command -v deno bun node jsc)",
+      "Read(//System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/**)",
+      "Read(//System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Redesign core: athletic dashboard, Weight tab, new nav, Archivo type *)",
+      "Bash(git push *)"
+    ]
+  }
+}
