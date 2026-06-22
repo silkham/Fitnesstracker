@@ -3707,9 +3707,9 @@ function openWeightEntry(dateISO) {
     <div class="field">
       <label class="field-label">${dateLabel}</label>
       <div class="stepper">
-        <button onclick="adjWeight(-0.5)">−</button>
+        <button onclick="adjWeight(-0.1)">−</button>
         <span class="v" id="wKg" style="min-width:90px;font-family:'Archivo Expanded','Archivo',sans-serif;font-size:26px;font-weight:800;">${parseFloat(startVal).toFixed(1)}</span>
-        <button onclick="adjWeight(0.5)">+</button>
+        <button onclick="adjWeight(0.1)">+</button>
         <span style="padding:0 14px;color:var(--ink-3);font-size:13px;">kg</span>
       </div>
     </div>
@@ -3723,8 +3723,9 @@ function openWeightEntry(dateISO) {
 
 function adjWeight(delta) {
   const el = document.getElementById('wKg');
-  let v = parseFloat(el.textContent);
-  v = Math.max(30, Math.min(300, v + delta));
+  let v = parseFloat(el.textContent) + delta;
+  v = Math.round(v * 10) / 10;            // snap to clean 0.1 to avoid float drift
+  v = Math.max(30, Math.min(300, v));
   el.textContent = v.toFixed(1);
 }
 
