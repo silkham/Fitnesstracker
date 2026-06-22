@@ -42,6 +42,28 @@ function normType(name: unknown): string {
   return "other";
 }
 
+const num = (x: unknown): number | null => {
+  const n = parseFloat(String(x ?? ""));
+  return isNaN(n) ? null : n;
+};
+// energy → kcal (Health sends active energy in kJ)
+function toKcal(e: any): number | null {
+  const q = num(e?.qty);
+  if (q == null) return null;
+  const u = String(e?.units ?? "").toLowerCase();
+  if (u === "kj") return Math.round(q / 4.184);
+  if (u === "cal") return Math.round(q / 1000);
+  return Math.round(q); // already kcal
+}
+// distance → km
+function toKm(d: any): number | null {
+  const q = num(d?.qty);
+  if (q == null) return null;
+  const u = String(d?.units ?? "").toLowerCase();
+  const km = (u === "mi" || u === "mile" || u === "miles") ? q * 1.60934 : q;
+  return Math.round(km * 100) / 100;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "GET") return json({ ok: true, service: "health-ingest" });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -73,6 +95,10 @@ Deno.serve(async (req) => {
     if (s && e) duration_min = Math.max(1, Math.round((e.getTime() - s.getTime()) / 60000));
     else if (typeof w.duration === "number") duration_min = w.duration > 600 ? Math.round(w.duration / 60) : Math.round(w.duration);
 
+    const hr = w.heartRate ?? {};
+    const avgHr = num(hr?.avg?.qty) ?? num(w.avgHeartRate?.qty);
+    const maxHr = num(hr?.max?.qty) ?? num(w.maxHeartRate?.qty);
+
     workoutRows.push({
       household_id: HOUSEHOLD_ID,
       member_id: MEMBER_ID,
@@ -80,6 +106,10 @@ Deno.serve(async (req) => {
       session_type: normType(w.name ?? w.type),
       class_title: w.name ?? w.type ?? null, // keep Apple's original label as the subtitle
       duration_min,
+      calories: toKcal(w.activeEnergyBurned) ?? toKcal(w.totalEnergy),
+      avg_hr: avgHr != null ? Math.round(avgHr) : null,
+      max_hr: maxHr != null ? Math.round(maxHr) : null,
+      distance_km: toKm(w.distance),
       status: "done",
       source: "apple_health",
       health_uid: String(w.id ?? w.uuid ?? start),
@@ -118,8 +148,6 @@ Deno.serve(async (req) => {
     ok: true,
     workouts: await upsert("workouts", "member_id,health_uid", workoutRows),
     weight: await upsert("weight_entries", "member_id,logged_at", weightRows),
-    // TEMP debug: echo one raw workout so we can see its exact metric field names.
-    debug_sample: workoutsRaw[0] ?? null,
   };
   return json(result);
 });

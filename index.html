@@ -3216,6 +3216,16 @@ function sessionIconTile(t, px) {
   const tint = sessionTint(t);
   return `<div style="width:${size}px;height:${size}px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${tint}22;color:${tint};">${sessionIcon(t, Math.round(size * 0.52))}</div>`;
 }
+
+// "284 kcal · 131 bpm · 12.8 km" — intensity metrics synced from Apple Health
+function workoutMetricsLine(w) {
+  if (!w) return '';
+  const bits = [];
+  if (w.calories) bits.push(`${w.calories} kcal`);
+  if (w.avg_hr) bits.push(`${w.avg_hr} bpm`);
+  if (w.distance_km) bits.push(`${parseFloat(w.distance_km).toFixed(1)} km`);
+  return bits.join(' · ');
+}
 function timeOfDayLabel(t) {
   return { early:'Early', morning:'Morning', midday:'Midday', afternoon:'Afternoon', evening:'Evening', late:'Late' }[t] || '';
 }
@@ -3989,22 +3999,19 @@ function renderExercise() {
     <a href="#" id="clearExerciseLink" onclick="event.preventDefault();clearExerciseWeek(this);" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Clear week</a>
   </div>`;
 
-  // Last-30-days motivation band
+  // Last-30-days motivation band — sessions · time · calories
   {
     const since = isoDateAddDays(today, -30);
     const done30 = State.workouts.filter(w => w.member_id === m.id && w.status === 'done' && w.planned_for >= since && w.planned_for <= today);
     const mins30 = done30.reduce((s, w) => s + (w.duration_min || 0), 0);
+    const kcal30 = done30.reduce((s, w) => s + (w.calories || 0), 0);
     const hrs = Math.floor(mins30 / 60), rem = mins30 % 60;
-    const timeStr = mins30 >= 60 ? `${hrs}<span class="frac">h</span> ${rem}<span class="frac">m</span>` : `${mins30}<span class="frac">m</span>`;
-    html += `<div class="stat-grid">
-      <div class="stat-tile">
-        <div class="stat-num"><span class="accent">${done30.length}</span></div>
-        <div class="stat-label">sessions · last 30 days</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-num">${timeStr}</div>
-        <div class="stat-label">time trained</div>
-      </div>
+    const timeStr = mins30 >= 60 ? `${hrs}<span class="frac">h</span> ${rem}` : `${mins30}`;
+    html += `<div class="eyebrow" style="margin:2px 2px 8px;">Last 30 days</div>
+    <div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:16px 14px;">
+      <div><div class="stat-num" style="font-size:26px;"><span class="accent">${done30.length}</span></div><div class="stat-label">sessions</div></div>
+      <div><div class="stat-num" style="font-size:26px;">${timeStr}<span class="frac">${mins30 >= 60 ? 'm' : ' min'}</span></div><div class="stat-label">trained</div></div>
+      ${kcal30 > 0 ? `<div><div class="stat-num" style="font-size:26px;color:#ffb84d;">${kcal30.toLocaleString()}</div><div class="stat-label">kcal</div></div>` : ''}
     </div>`;
   }
 
@@ -4135,6 +4142,7 @@ function renderExercise() {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;color:var(--ink);font-size:14px;">${escapeHtml(disp.primary)}</div>
             ${disp.secondary ? `<div class="tiny" style="color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(disp.secondary)}</div>` : ''}
+            ${workoutMetricsLine(w) ? `<div class="tiny" style="color:var(--ink-4);margin-top:1px;">${workoutMetricsLine(w)}</div>` : ''}
           </div>
           <div class="tiny" style="color:var(--ink-4);white-space:nowrap;">${formatHistoryDate(w.planned_for)}</div>
         </div>`;
