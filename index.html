@@ -1758,7 +1758,7 @@ async function loadAll() {
       State.client.from('settings').select('*').eq('household_id', State.householdId).single(),
       State.client.from('recipes').select('*').eq('household_id', State.householdId).order('created_at'),
       State.client.from('weight_entries').select('*').eq('household_id', State.householdId).order('logged_at', { ascending: false }).limit(180),
-      State.client.from('workouts').select('*').eq('household_id', State.householdId).gte('planned_for', isoDateAddDays(weekStartFor(new Date()), 0)).lte('planned_for', isoDateAddDays(weekStartFor(new Date()), 41)),
+      State.client.from('workouts').select('*').eq('household_id', State.householdId).gte('planned_for', isoDateAddDays(todayISO(), -90)).lte('planned_for', isoDateAddDays(weekStartFor(new Date()), 41)),
       getOrCreateWeekPlan(weekStartFor(new Date())),
     ]);
 
