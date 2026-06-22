@@ -1981,14 +1981,20 @@ function rolling7FromToday() {
 function detectWorkoutType(input) {
   if (!input) return null;
   const s = String(input).toLowerCase();
-  if (s.includes('ride') || s.includes('cycling') || s.includes('bike')) return 'ride';
-  if (s.includes('strength') || s.includes('arms') || s.includes('legs') || s.includes('core') || s.includes('upper-body') || s.includes('lower-body') || s.includes('full-body')) return 'strength';
+  // canonical app values pass straight through
+  if (['ride','run','strength','yoga','stretch','walk','rest','other'].includes(s)) return s;
+  // Apple Health / Peloton workout-type names
+  if (s.includes('ride') || s.includes('cycl') || s.includes('bike') || s.includes('spin')) return 'ride';
+  if (s.includes('strength') || s.includes('arms') || s.includes('legs') || s.includes('core') || s.includes('upper-body') || s.includes('lower-body') || s.includes('full-body') || s.includes('functional') || s.includes('pilates')) return 'strength';
   if (s.includes('yoga')) return 'yoga';
-  if (s.includes('stretch')) return 'stretch';
-  if (s.includes('walk')) return 'walk';
-  if (s.includes('run') || s.includes('running')) return 'run';
+  if (s.includes('stretch') || s.includes('mobility') || s.includes('cool down')) return 'stretch';
+  if (s.includes('walk') || s.includes('hik')) return 'walk';
+  if (s.includes('run')) return 'run';
   return null;
 }
+
+// Normalise any stored/synced workout type to a canonical app value (falls back to raw).
+function normType(t) { return detectWorkoutType(t) || t || 'other'; }
 
 function parsePelotonUrl(rawText) {
   // Returns { url, class_id, workout_type, class_title } or null
@@ -3183,12 +3189,12 @@ function openWeightEntryFor(dateISO) {
 }
 
 function sessionTypeLabel(t) {
-  return { ride:'Ride', strength:'Strength', yoga:'Yoga', stretch:'Stretch', walk:'Walk', run:'Run', other:'Workout', rest:'Rest day' }[t] || t;
+  return { ride:'Ride', strength:'Strength', yoga:'Yoga', stretch:'Stretch', walk:'Walk', run:'Run', other:'Workout', rest:'Rest day' }[normType(t)] || t;
 }
 
 // Per-session-type colour + line icon ("workout art")
 function sessionTint(t) {
-  return { ride:'#19e08a', run:'#b3a0ff', strength:'#5cc6ff', yoga:'#5de0c4', walk:'#ffd23d', stretch:'#ff9d6b', other:'#8a93a3', rest:'#8a93a3' }[t] || '#8a93a3';
+  return { ride:'#19e08a', run:'#b3a0ff', strength:'#5cc6ff', yoga:'#5de0c4', walk:'#ffd23d', stretch:'#ff9d6b', other:'#8a93a3', rest:'#8a93a3' }[normType(t)] || '#8a93a3';
 }
 function sessionIcon(t, size) {
   const s = size || 22;
@@ -3202,7 +3208,7 @@ function sessionIcon(t, size) {
     other: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
     rest: '<path d="M14 4h6l-6 8h6M5 13h4l-4 6h4"/>',
   };
-  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[t] || paths.other}</svg>`;
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[normType(t)] || paths.other}</svg>`;
 }
 // A coloured icon tile for a session type
 function sessionIconTile(t, px) {
