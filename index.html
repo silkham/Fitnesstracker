@@ -71,10 +71,9 @@
   --dur-slow: 360ms;
 }
 
-/* single-user now — member overrides collapse to the one accent (no colour flip) */
-[data-member="a"], [data-member="b"] {
-  --accent: var(--accent);
-}
+/* single-user: no per-member accent override (the accent lives only in :root).
+   NOTE: never write `--accent: var(--accent)` here — a self-reference makes the
+   custom property invalid whenever data-member is set, breaking every var(--accent). */
 
 /* App is dark by default; light toggle is a no-op for now (alive-dark only). */
 [data-theme="dark"] {
@@ -1507,7 +1506,7 @@ const State = {
 // ============================================================
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
-const BUILD = 'BUILD 12 · graphs + buttons fixed';
+const BUILD = 'BUILD 13 · accent cycle fixed';
 try { document.getElementById('buildTag').textContent = BUILD; } catch (e) {}
 
 // Baked-in defaults so no device ever has to paste config.
