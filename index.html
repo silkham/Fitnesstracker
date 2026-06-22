@@ -112,7 +112,7 @@ input, button, textarea, select {
   outline: none;
 }
 button { cursor: pointer; }
-input, textarea { -webkit-appearance: none; appearance: none; }
+input, textarea, button, select { -webkit-appearance: none; appearance: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -1507,7 +1507,7 @@ const State = {
 // ============================================================
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
-const BUILD = 'BUILD 11 · single-user · graph fix';
+const BUILD = 'BUILD 12 · graphs + buttons fixed';
 try { document.getElementById('buildTag').textContent = BUILD; } catch (e) {}
 
 // Baked-in defaults so no device ever has to paste config.
@@ -3071,8 +3071,8 @@ function renderSparkline(weights) {
   const pathD = points.map((pt, i) => (i === 0 ? 'M' : 'L') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
   const areaD = pathD + ` L ${(w-p).toFixed(1)} ${h-p} L ${p} ${h-p} Z`;
   return `<svg class="spark-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <path class="area" fill="var(--accent)" fill-opacity="0.18" stroke="none" d="${areaD}"/>
-    <path fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="${pathD}"/>
+    <path class="area" d="${areaD}" style="fill:var(--accent);fill-opacity:0.18;stroke:none"/>
+    <path d="${pathD}" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>
   </svg>`;
 }
 
@@ -3101,9 +3101,9 @@ function renderWeightChart(weights, goal) {
   // Clamp the goal line into the visible band so it shows as an edge reference when far away.
   const goalY = goal != null ? Math.max(py, Math.min(h - py, yFor(goal))).toFixed(1) : null;
   return `<svg class="spark-svg" style="height:130px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <path class="area" fill="var(--accent)" fill-opacity="0.18" stroke="none" d="${areaD}"/>
-    ${goalY != null ? `<line x1="${px}" y1="${goalY}" x2="${w - px}" y2="${goalY}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` : ''}
-    <path fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="${pathD}"/>
+    <path class="area" d="${areaD}" style="fill:var(--accent);fill-opacity:0.18;stroke:none"/>
+    ${goalY != null ? `<line x1="${px}" y1="${goalY}" x2="${w - px}" y2="${goalY}" style="stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:0.5"/>` : ''}
+    <path d="${pathD}" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>
   </svg>`;
 }
 
