@@ -3989,6 +3989,25 @@ function renderExercise() {
     <a href="#" id="clearExerciseLink" onclick="event.preventDefault();clearExerciseWeek(this);" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Clear week</a>
   </div>`;
 
+  // Last-30-days motivation band
+  {
+    const since = isoDateAddDays(today, -30);
+    const done30 = State.workouts.filter(w => w.member_id === m.id && w.status === 'done' && w.planned_for >= since && w.planned_for <= today);
+    const mins30 = done30.reduce((s, w) => s + (w.duration_min || 0), 0);
+    const hrs = Math.floor(mins30 / 60), rem = mins30 % 60;
+    const timeStr = mins30 >= 60 ? `${hrs}<span class="frac">h</span> ${rem}<span class="frac">m</span>` : `${mins30}<span class="frac">m</span>`;
+    html += `<div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-num"><span class="accent">${done30.length}</span></div>
+        <div class="stat-label">sessions · last 30 days</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-num">${timeStr}</div>
+        <div class="stat-label">time trained</div>
+      </div>
+    </div>`;
+  }
+
   // Strength logging section
   html += strengthSectionHtml(m);
 
@@ -4101,16 +4120,26 @@ function renderExercise() {
     html += `${partnerLines}</div>`;
   });
 
-  // Setup hint if no calendar configured yet
-  const calendarsConfigured = State.members.filter(mm => mm.peloton_calendar_url).length;
-  if (calendarsConfigured === 0) {
-    html += `<div class="card" style="margin-top:14px;background:var(--accent-soft);border-color:var(--accent);">
-      <div class="card-eyebrow"><span class="eyebrow">Set up Peloton sync</span></div>
-      <div class="card-meta" style="margin-top:6px;">
-        Add a Peloton calendar URL in your profile to auto-import enrolled classes.
-      </div>
-      <button class="card-action" style="margin-top:10px;" onclick="switchScreen('profile')">Open profile →</button>
-    </div>`;
+  // Recent completed sessions (past days), newest first — synced rides + logged workouts
+  {
+    const recent = State.workouts
+      .filter(w => w.member_id === m.id && w.status === 'done' && w.planned_for < today)
+      .sort((a, b) => b.planned_for.localeCompare(a.planned_for))
+      .slice(0, 20);
+    if (recent.length) {
+      html += `<div class="section-head"><span class="t">Recent</span></div>`;
+      html += recent.map(w => {
+        const disp = formatWorkoutDisplay(w);
+        return `<div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;" onclick="openWorkoutById('${w.id}','${w.planned_for}')">
+          ${sessionIconTile(w.session_type, 40)}
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;color:var(--ink);font-size:14px;">${escapeHtml(disp.primary)}</div>
+            ${disp.secondary ? `<div class="tiny" style="color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(disp.secondary)}</div>` : ''}
+          </div>
+          <div class="tiny" style="color:var(--ink-4);white-space:nowrap;">${formatHistoryDate(w.planned_for)}</div>
+        </div>`;
+      }).join('');
+    }
   }
 
   // Quiet "Open Peloton" at bottom for ad-hoc use
