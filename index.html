@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Household">
 <meta name="theme-color" content="#080a10">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Household%22%2C%22short_name%22%3A%22Household%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f6f7f5%22%2C%22theme_color%22%3A%22%23f6f7f5%22%2C%22share_target%22%3A%7B%22action%22%3A%22.%2F%22%2C%22method%22%3A%22GET%22%2C%22params%22%3A%7B%22title%22%3A%22title%22%2C%22text%22%3A%22text%22%2C%22url%22%3A%22url%22%7D%7D%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%3Bcharset%3Dutf-8%2C%253Csvg%2520xmlns%253D%2522http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2522%2520viewBox%253D%25220%25200%2520192%2520192%2522%253E%253Crect%2520width%253D%2522192%2522%2520height%253D%2522192%2522%2520rx%253D%252242%2522%2520fill%253D%2522%2523f6f7f5%2522%252F%253E%253Cpath%2520d%253D%2522M50%252070%2520L96%252050%2520L142%252070%2520L142%2520140%2520L96%2520120%2520L50%2520140%2520Z%2522%2520fill%253D%2522none%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%2520stroke-linejoin%253D%2522round%2522%252F%253E%253Cpath%2520d%253D%2522M96%252050%2520L96%2520120%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%252F%253E%253Ccircle%2520cx%253D%252272%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%25231f3a72%2522%252F%253E%253Ccircle%2520cx%253D%2522120%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%2523c8392a%2522%252F%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
 <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='36' fill='%23f6f7f5'/><line x1='36' y1='135' x2='144' y2='135' stroke='%231c2820' stroke-width='1' opacity='0.3'/><g transform='translate(60 75)'><circle cx='0' cy='0' r='7' fill='%23c8392a'/><path d='M -2 8 L 2 32' stroke='%23c8392a' stroke-width='5' stroke-linecap='round'/><path d='M 2 14 L 10 22' stroke='%23c8392a' stroke-width='3.5' stroke-linecap='round'/><path d='M -2 14 L -10 8' stroke='%23c8392a' stroke-width='3.5' stroke-linecap='round'/><path d='M 2 32 L 11 50' stroke='%23c8392a' stroke-width='4' stroke-linecap='round'/><path d='M 2 32 L -9 46' stroke='%23c8392a' stroke-width='4' stroke-linecap='round'/></g><g transform='translate(112 75)'><circle cx='0' cy='0' r='7' fill='%231f3a72'/><path d='M -2 8 L 2 32' stroke='%231f3a72' stroke-width='5' stroke-linecap='round'/><path d='M 2 14 L 10 22' stroke='%231f3a72' stroke-width='3.5' stroke-linecap='round'/><path d='M -2 14 L -10 8' stroke='%231f3a72' stroke-width='3.5' stroke-linecap='round'/><path d='M 2 32 L 11 50' stroke='%231f3a72' stroke-width='4' stroke-linecap='round'/><path d='M 2 32 L -9 46' stroke='%231f3a72' stroke-width='4' stroke-linecap='round'/></g></svg>">
 <title>Household</title>
@@ -1257,6 +1260,20 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 }
 .meal-slot-add { flex-shrink: 0; color: var(--ink-4); font-size: 18px; padding: 0 4px; }
 
+/* temporary build/version stamp (helps confirm fresh code vs cache) */
+.build-tag {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  opacity: 0.7;
+  z-index: 40;
+  pointer-events: none;
+}
+
 /* utility */
 .spacer-sm { height: 8px; }
 .spacer-md { height: 16px; }
@@ -1432,6 +1449,8 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
   </nav>
 </div>
 
+<div class="build-tag" id="buildTag"></div>
+
 <!-- ============================================================
      SHEETS (modals)
 ============================================================ -->
@@ -1488,6 +1507,8 @@ const State = {
 // ============================================================
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
+const BUILD = 'BUILD 10 · emerald · 0.1kg';
+try { document.getElementById('buildTag').textContent = BUILD; } catch (e) {}
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
