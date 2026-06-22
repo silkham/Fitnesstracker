@@ -1357,6 +1357,7 @@ const State = {
   weekStart: null,      // ISO date string of current week's Monday
   workouts: [],         // current week's workouts
   weights: [],          // all weight entries (history)
+  strengthSets: [],     // strength_sets rows (history)
   shoppingItems: [],
   mealsTab: 'week',
   vaultCategory: 'dinner',
@@ -1624,6 +1625,19 @@ async function loadAll() {
     State.workouts = workouts.data || [];
     State.weekPlan = weekPlan;
     State.weekStart = weekPlan.week_start;
+
+    // load strength sets (last 120 days). Resilient: table may not exist yet.
+    try {
+      const since = isoDateAddDays(todayISO(), -120);
+      const { data: sets, error: setErr } = await State.client
+        .from('strength_sets')
+        .select('*')
+        .eq('member_id', State.activeMemberId || (members.data && members.data[0] && members.data[0].id))
+        .gte('performed_at', since)
+        .order('performed_at', { ascending: false })
+        .order('created_at', { ascending: false });
+      State.strengthSets = setErr ? [] : (sets || []);
+    } catch (e) { State.strengthSets = []; }
 
     // load ingredients
     if (State.recipes.length) {
@@ -3576,6 +3590,174 @@ async function deleteWeight(id) {
 }
 
 // ============================================================
+// STRENGTH LOGGING
+// ============================================================
+let _lastLift = { exercise: '', reps: 8, weight: 20 };
+
+function fmtKg(v) {
+  const n = parseFloat(v);
+  if (isNaN(n)) return '—';
+  return (Number.isInteger(n) ? n : n.toFixed(1)) + 'kg';
+}
+
+function adjNum(id, delta, min, max, decimals) {
+  const el = document.getElementById(id);
+  let v = parseFloat(el.textContent) + delta;
+  v = Math.max(min, Math.min(max, v));
+  el.textContent = decimals ? (Math.round(v * 10) / 10) : Math.round(v);
+}
+
+// Strength card shown on the Train screen
+function strengthSectionHtml(m) {
+  const sets = State.strengthSets.filter(s => s.member_id === m.id);
+  const today = todayISO();
+  const todaySets = sets.filter(s => s.performed_at === today);
+  let h = `<div class="card">
+    <div class="card-row" style="margin-bottom:${(todaySets.length || sets.length) ? '12' : '8'}px;">
+      <span class="eyebrow">Strength</span>
+      <button class="card-action primary" onclick="openStrengthLogger()">+ Log set</button>
+    </div>`;
+
+  if (todaySets.length) {
+    const groups = {};
+    todaySets.forEach(s => { (groups[s.exercise] = groups[s.exercise] || []).push(s); });
+    h += Object.keys(groups).map(ex => {
+      const g = groups[ex].slice().sort((a, b) => (a.set_number || 0) - (b.set_number || 0));
+      const summary = g.map(s => `${s.reps || 0}×${fmtKg(s.weight_kg)}`).join('   ');
+      const vol = g.reduce((t, s) => t + (s.reps || 0) * (parseFloat(s.weight_kg) || 0), 0);
+      return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid var(--line);cursor:pointer;" onclick="openExerciseHistory('${encodeURIComponent(ex)}')">
+        <div style="min-width:0;">
+          <div style="font-weight:600;color:var(--ink);font-size:14px;">${escapeHtml(ex)}</div>
+          <div class="tiny" style="color:var(--ink-3);">${summary}</div>
+        </div>
+        <div class="tiny" style="color:var(--ink-4);white-space:nowrap;padding-left:10px;">${Math.round(vol)} kg vol</div>
+      </div>`;
+    }).join('');
+    h += `<div class="tiny" style="margin-top:10px;text-align:right;"><a href="#" onclick="event.preventDefault();openStrengthHistory();" style="color:var(--accent);text-decoration:none;">All history →</a></div>`;
+  } else if (sets.length) {
+    const recent = [];
+    const seen = new Set();
+    for (const s of sets) { if (!seen.has(s.exercise)) { seen.add(s.exercise); recent.push(s); } if (recent.length >= 4) break; }
+    h += recent.map(s => `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid var(--line);cursor:pointer;" onclick="openExerciseHistory('${encodeURIComponent(s.exercise)}')">
+      <span style="font-weight:600;color:var(--ink);font-size:14px;">${escapeHtml(s.exercise)}</span>
+      <span class="tiny" style="color:var(--ink-3);">last ${fmtKg(s.weight_kg)} · ${formatHistoryDate(s.performed_at)}</span>
+    </div>`).join('');
+    h += `<div class="tiny" style="margin-top:8px;color:var(--ink-4);">Nothing logged today yet.</div>`;
+  } else {
+    h += `<div class="tiny" style="color:var(--ink-3);padding-top:2px;">Track your lifts — sets, reps, weight. Tap “Log set” to start.</div>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+function openStrengthLogger(prefillEx) {
+  const m = activeMember();
+  const today = todayISO();
+  const exNames = [...new Set(State.strengthSets.filter(s => s.member_id === m.id).map(s => s.exercise))];
+  const ex = prefillEx != null ? prefillEx : _lastLift.exercise;
+  const reps = _lastLift.reps;
+  const weight = _lastLift.weight;
+  const todaySets = State.strengthSets.filter(s => s.member_id === m.id && s.performed_at === today);
+  const todayList = todaySets.length ? `<div class="field" style="margin-top:16px;"><label class="field-label">Logged today</label>${
+    todaySets.slice().sort((a, b) => a.exercise.localeCompare(b.exercise) || (a.set_number || 0) - (b.set_number || 0)).map(s => `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:6px;">
+      <span style="font-size:13px;"><b>${escapeHtml(s.exercise)}</b> · ${s.reps || 0}×${fmtKg(s.weight_kg)}</span>
+      <span onclick="deleteStrengthSet('${s.id}')" style="color:var(--ink-4);font-size:18px;cursor:pointer;padding:0 4px;">×</span>
+    </div>`).join('')}</div>` : '';
+  const html = `
+    <div class="field">
+      <label class="field-label">Exercise</label>
+      <input class="input" id="sEx" list="exList" placeholder="e.g. Bench press" value="${escapeHtml(ex)}" autocomplete="off">
+      <datalist id="exList">${exNames.map(n => `<option value="${escapeHtml(n)}">`).join('')}</datalist>
+    </div>
+    <div class="input-row">
+      <div class="field" style="flex:1;">
+        <label class="field-label">Reps</label>
+        <div class="stepper"><button onclick="adjNum('sReps',-1,1,100,0)">−</button><span class="v" id="sReps">${reps}</span><button onclick="adjNum('sReps',1,1,100,0)">+</button></div>
+      </div>
+      <div class="field" style="flex:1;">
+        <label class="field-label">Weight (kg)</label>
+        <div class="stepper"><button onclick="adjNum('sWt',-2.5,0,500,1)">−</button><span class="v" id="sWt">${weight}</span><button onclick="adjNum('sWt',2.5,0,500,1)">+</button></div>
+      </div>
+    </div>
+    <button class="btn accent block" style="margin-top:4px;" onclick="addStrengthSet()">Add set</button>
+    ${todayList}
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeSheet()">Done</button>
+  `;
+  openSheet('Log strength', html);
+}
+
+async function addStrengthSet() {
+  const m = activeMember();
+  const exercise = (document.getElementById('sEx').value || '').trim();
+  if (!exercise) { toast('Enter an exercise'); return; }
+  const reps = parseInt(document.getElementById('sReps').textContent, 10) || 0;
+  const weight = parseFloat(document.getElementById('sWt').textContent) || 0;
+  const today = todayISO();
+  const setNum = State.strengthSets.filter(s => s.member_id === m.id && s.performed_at === today && s.exercise.toLowerCase() === exercise.toLowerCase()).length + 1;
+  _lastLift = { exercise, reps, weight };
+  setSync('syncing', 'Saving');
+  const payload = { household_id: State.householdId, member_id: m.id, performed_at: today, exercise, set_number: setNum, reps, weight_kg: weight };
+  const { data, error } = await State.client.from('strength_sets').insert(payload).select().single();
+  if (error) {
+    const msg = /relation|does not exist|schema cache|find the table/i.test(error.message || '') ? 'Run supabase-phase1.sql first' : 'Save failed';
+    toast(msg); setSync('offline', 'Error'); return;
+  }
+  State.strengthSets.unshift(data);
+  setSync('synced', 'Saved'); toast('Set added 💪');
+  renderAll();
+  openStrengthLogger(exercise);
+}
+
+async function deleteStrengthSet(id) {
+  await State.client.from('strength_sets').delete().eq('id', id);
+  State.strengthSets = State.strengthSets.filter(s => s.id !== id);
+  toast('Removed');
+  renderAll();
+  openStrengthLogger();
+}
+
+function openExerciseHistory(encName) {
+  const ex = decodeURIComponent(encName);
+  const m = activeMember();
+  const sets = State.strengthSets.filter(s => s.member_id === m.id && s.exercise === ex);
+  if (!sets.length) { openSheet(ex, '<div class="empty"><div class="empty-title">No sets yet</div></div>'); return; }
+  const byDate = {};
+  sets.forEach(s => { (byDate[s.performed_at] = byDate[s.performed_at] || []).push(s); });
+  const dates = Object.keys(byDate).sort().reverse();
+  const pr = Math.max(...sets.map(s => parseFloat(s.weight_kg) || 0));
+  let html = `<div class="tiny" style="margin-bottom:12px;color:var(--ink-3);">Best <b style="color:var(--accent);">${fmtKg(pr)}</b> · ${sets.length} sets logged</div>`;
+  html += dates.map(d => {
+    const g = byDate[d].slice().sort((a, b) => (a.set_number || 0) - (b.set_number || 0));
+    return `<div style="padding:10px 0;border-top:1px solid var(--line);">
+      <div class="tiny" style="color:var(--ink-4);margin-bottom:4px;">${formatHistoryDate(d)}</div>
+      <div style="font-size:14px;color:var(--ink);">${g.map(s => `${s.reps || 0}×${fmtKg(s.weight_kg)}`).join('   ')}</div>
+    </div>`;
+  }).join('');
+  html += `<button class="btn accent block" style="margin-top:16px;" onclick="closeSheet();openStrengthLoggerEnc('${encodeURIComponent(ex)}')">Add a set</button>`;
+  openSheet(ex, html);
+}
+
+function openStrengthLoggerEnc(enc) {
+  openStrengthLogger(decodeURIComponent(enc));
+}
+
+function openStrengthHistory() {
+  const m = activeMember();
+  const exNames = [...new Set(State.strengthSets.filter(s => s.member_id === m.id).map(s => s.exercise))];
+  if (!exNames.length) { openSheet('Strength', '<div class="empty"><div class="empty-title">No lifts yet</div></div>'); return; }
+  const html = exNames.map(ex => {
+    const sets = State.strengthSets.filter(s => s.member_id === m.id && s.exercise === ex);
+    const pr = Math.max(...sets.map(s => parseFloat(s.weight_kg) || 0));
+    const last = sets[0];
+    return `<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:6px;" onclick="openExerciseHistory('${encodeURIComponent(ex)}')">
+      <span style="font-weight:600;">${escapeHtml(ex)}</span>
+      <span class="tiny" style="color:var(--ink-3);">best ${fmtKg(pr)} · ${formatHistoryDate(last.performed_at)}</span>
+    </div>`;
+  }).join('');
+  openSheet('Strength history', html);
+}
+
+// ============================================================
 // RENDER · EXERCISE
 // ============================================================
 function renderExercise() {
@@ -3596,7 +3778,7 @@ function renderExercise() {
   // Workouts for the visible (rolling) strip
   const visibleWorkouts = State.workouts.filter(w => w.member_id === m.id && weekDays.includes(w.planned_for));
 
-  document.getElementById('exerciseSub').innerHTML = `<span data-num-id="exercise-done">${doneCount}</span> of ${target} sessions · ${escapeHtml(m.display_name)}`;
+  document.getElementById('exerciseSub').innerHTML = `<span data-num-id="exercise-done">${doneCount}</span> of ${target} sessions this week`;
 
   let html = '';
 
@@ -3610,9 +3792,15 @@ function renderExercise() {
     <button class="btn primary" style="flex:1;" onclick="syncPelotonCalendars(true)">Sync Peloton</button>
     <button class="btn accent" style="flex:1;" onclick="openMagicWeekExercise()">Plan week</button>
   </div>
-  <div style="text-align:right;margin-bottom:14px;">
+  <div style="text-align:right;margin-bottom:8px;">
     <a href="#" id="clearExerciseLink" onclick="event.preventDefault();clearExerciseWeek(this);" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Clear week</a>
   </div>`;
+
+  // Strength logging section
+  html += strengthSectionHtml(m);
+
+  // Schedule heading
+  html += `<div class="section-head"><span class="t">Schedule</span></div>`;
 
   // 7 day cards
   // Other member's workouts for the same days (for partner-session line + conflict dot)
