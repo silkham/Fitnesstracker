@@ -118,6 +118,8 @@ Deno.serve(async (req) => {
     ok: true,
     workouts: await upsert("workouts", "member_id,health_uid", workoutRows),
     weight: await upsert("weight_entries", "member_id,logged_at", weightRows),
+    // TEMP debug: echo one raw workout so we can see its exact metric field names.
+    debug_sample: workoutsRaw[0] ?? null,
   };
   return json(result);
 });
