@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Household">
-<meta name="theme-color" content="#0c0f14">
+<meta name="theme-color" content="#080a10">
 <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Household%22%2C%22short_name%22%3A%22Household%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f6f7f5%22%2C%22theme_color%22%3A%22%23f6f7f5%22%2C%22share_target%22%3A%7B%22action%22%3A%22.%2F%22%2C%22method%22%3A%22GET%22%2C%22params%22%3A%7B%22title%22%3A%22title%22%2C%22text%22%3A%22text%22%2C%22url%22%3A%22url%22%7D%7D%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%3Bcharset%3Dutf-8%2C%253Csvg%2520xmlns%253D%2522http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2522%2520viewBox%253D%25220%25200%2520192%2520192%2522%253E%253Crect%2520width%253D%2522192%2522%2520height%253D%2522192%2522%2520rx%253D%252242%2522%2520fill%253D%2522%2523f6f7f5%2522%252F%253E%253Cpath%2520d%253D%2522M50%252070%2520L96%252050%2520L142%252070%2520L142%2520140%2520L96%2520120%2520L50%2520140%2520Z%2522%2520fill%253D%2522none%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%2520stroke-linejoin%253D%2522round%2522%252F%253E%253Cpath%2520d%253D%2522M96%252050%2520L96%2520120%2522%2520stroke%253D%2522%25231c2820%2522%2520stroke-width%253D%25223%2522%252F%253E%253Ccircle%2520cx%253D%252272%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%25231f3a72%2522%252F%253E%253Ccircle%2520cx%253D%2522120%2522%2520cy%253D%252295%2522%2520r%253D%25226%2522%2520fill%253D%2522%2523c8392a%2522%252F%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
 <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='36' fill='%23f6f7f5'/><line x1='36' y1='135' x2='144' y2='135' stroke='%231c2820' stroke-width='1' opacity='0.3'/><g transform='translate(60 75)'><circle cx='0' cy='0' r='7' fill='%23c8392a'/><path d='M -2 8 L 2 32' stroke='%23c8392a' stroke-width='5' stroke-linecap='round'/><path d='M 2 14 L 10 22' stroke='%23c8392a' stroke-width='3.5' stroke-linecap='round'/><path d='M -2 14 L -10 8' stroke='%23c8392a' stroke-width='3.5' stroke-linecap='round'/><path d='M 2 32 L 11 50' stroke='%23c8392a' stroke-width='4' stroke-linecap='round'/><path d='M 2 32 L -9 46' stroke='%23c8392a' stroke-width='4' stroke-linecap='round'/></g><g transform='translate(112 75)'><circle cx='0' cy='0' r='7' fill='%231f3a72'/><path d='M -2 8 L 2 32' stroke='%231f3a72' stroke-width='5' stroke-linecap='round'/><path d='M 2 14 L 10 22' stroke='%231f3a72' stroke-width='3.5' stroke-linecap='round'/><path d='M -2 14 L -10 8' stroke='%231f3a72' stroke-width='3.5' stroke-linecap='round'/><path d='M 2 32 L 11 50' stroke='%231f3a72' stroke-width='4' stroke-linecap='round'/><path d='M 2 32 L -9 46' stroke='%231f3a72' stroke-width='4' stroke-linecap='round'/></g></svg>">
 <title>Household</title>
@@ -20,23 +20,26 @@
    Aged ivory · forest ink · indigo · pressed-flower coral · moss
 ============================================================ */
 :root {
-  /* Athletic dark — near-black page, raised charcoal cards, electric accent. */
-  --paper: #0c0f14;        /* page background — near black */
-  --paper-2: #141922;      /* card / surface */
-  --paper-3: #1c2230;      /* raised surfaces, inputs, pills */
-  --card: #141922;         /* card surface */
-  --ink: #f4f6f8;          /* primary text — near white */
-  --ink-2: #c2c9d4;        /* sub-headings */
-  --ink-3: #7b8595;        /* body muted */
+  /* Alive dark — deep space base, frosted-glass surfaces, emerald accent, aurora behind. */
+  --paper: #080a10;        /* page background — deepest */
+  --paper-2: #11151d;      /* slightly raised */
+  --paper-3: #1c2230;      /* inputs, pills, tracks */
+  --card: #12161e;         /* solid fallback (inputs/selects) */
+  --glass: rgba(18,22,30,0.55);          /* frosted card surface (over aurora) */
+  --glass-2: rgba(26,31,42,0.62);        /* slightly stronger glass */
+  --glass-line: rgba(255,255,255,0.11);  /* glass edge highlight */
+  --ink: #f4f7fa;          /* primary text — near white */
+  --ink-2: #c8cfd9;        /* sub-headings */
+  --ink-3: #8a93a3;        /* body muted */
   --ink-4: #525c6b;        /* hint, eyebrow */
-  --line: rgba(255,255,255,0.07);
-  --line-2: rgba(255,255,255,0.14);
+  --line: rgba(255,255,255,0.08);
+  --line-2: rgba(255,255,255,0.15);
 
   /* ====== ACCENT — change this one block to retheme the whole app ====== */
-  --accent: #c2ff4d;        /* electric lime — the single hero colour */
-  --accent-deep: #a5e02f;   /* pressed / darker accent */
-  --accent-soft: rgba(194,255,77,0.12);  /* faint accent wash */
-  --accent-ink: #0c0f14;    /* text that sits ON the accent (dark) */
+  --accent: #19e08a;        /* emerald — the single hero colour */
+  --accent-deep: #13c47a;   /* pressed / darker accent */
+  --accent-soft: rgba(25,224,138,0.13);  /* faint accent wash */
+  --accent-ink: #04140c;    /* text that sits ON the accent (dark) */
 
   /* legacy member-accent names kept pointing at the accent so old CSS still works */
   --indigo: var(--accent);
@@ -70,18 +73,18 @@
   --accent: var(--accent);
 }
 
-/* App is dark by default; light toggle is a no-op for now (athletic-dark only). */
+/* App is dark by default; light toggle is a no-op for now (alive-dark only). */
 [data-theme="dark"] {
-  --paper: #0c0f14;
-  --paper-2: #141922;
+  --paper: #080a10;
+  --paper-2: #11151d;
   --paper-3: #1c2230;
-  --card: #141922;
-  --ink: #f4f6f8;
-  --ink-2: #c2c9d4;
-  --ink-3: #7b8595;
+  --card: #12161e;
+  --ink: #f4f7fa;
+  --ink-2: #c8cfd9;
+  --ink-3: #8a93a3;
   --ink-4: #525c6b;
-  --line: rgba(255,255,255,0.07);
-  --line-2: rgba(255,255,255,0.14);
+  --line: rgba(255,255,255,0.08);
+  --line-2: rgba(255,255,255,0.15);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -117,6 +120,38 @@ input, textarea { -webkit-appearance: none; appearance: none; }
 }
 
 /* ============================================================
+   ATMOSPHERE — aurora + contour texture (sits behind everything)
+============================================================ */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.42;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.aurora .b1 { width: 60vw; height: 60vw; max-width: 360px; max-height: 360px; background: #19e08a; left: -12%; top: -8%; animation: aur1 16s ease-in-out infinite; }
+.aurora .b2 { width: 58vw; height: 58vw; max-width: 340px; max-height: 340px; background: #7b5cff; right: -16%; top: 18%; animation: aur2 21s ease-in-out infinite; }
+.aurora .b3 { width: 52vw; height: 52vw; max-width: 320px; max-height: 320px; background: #2bb7ff; left: 8%; bottom: -10%; animation: aur3 18s ease-in-out infinite; }
+@keyframes aur1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(8vw,5vh) scale(1.15); } }
+@keyframes aur2 { 0%,100% { transform: translate(0,0) scale(1.1); } 50% { transform: translate(-6vw,7vh) scale(0.95); } }
+@keyframes aur3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(6vw,-6vh) scale(1.2); } }
+/* faint contour texture woven over the aurora */
+.aurora .contour {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image: repeating-radial-gradient(circle at 30% 18%, transparent 0 26px, rgba(255,255,255,0.018) 26px 27px);
+}
+
+/* ============================================================
    LAYOUT
 ============================================================ */
 .app {
@@ -126,7 +161,30 @@ input, textarea { -webkit-appearance: none; appearance: none; }
   padding-bottom: 84px;
   padding-top: env(safe-area-inset-top);
   position: relative;
+  z-index: 1;
 }
+
+/* ============================================================
+   GLASS SURFACES — frosted cards over the aurora
+============================================================ */
+.card, .card-hero, .stat-tile, .day-card, .meal-day, .member-card, .hero-next, .config-card {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  border-color: var(--glass-line);
+}
+/* shimmer sweep on the primary accent button */
+.btn.accent { position: relative; overflow: hidden; }
+.btn.accent::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -60%;
+  width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-20deg);
+  animation: btnShimmer 3.4s ease-in-out infinite;
+}
+@keyframes btnShimmer { 0% { left: -60%; } 55%, 100% { left: 140%; } }
 
 .screen { display: none; padding: 16px; }
 .screen.active { display: block; animation: fadeIn var(--dur) var(--ease-settle); }
@@ -155,7 +213,7 @@ input, textarea { -webkit-appearance: none; appearance: none; }
 .gate {
   position: fixed;
   inset: 0;
-  background: var(--paper);
+  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -652,16 +710,16 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(12,15,20,0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(8,10,16,0.72);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
   border-top: 1px solid var(--line);
   display: flex;
   justify-content: space-around;
   padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
   z-index: 50;
 }
-[data-theme="dark"] .tabbar { background: rgba(19,17,13,0.92); }
+[data-theme="dark"] .tabbar { background: rgba(8,10,16,0.72); }
 .tab {
   display: flex;
   flex-direction: column;
@@ -1218,6 +1276,14 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 </head>
 
 <body>
+
+<!-- Ambient atmosphere: drifting aurora + faint contour texture, behind everything -->
+<div class="aurora" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="contour"></div>
+</div>
 
 <!-- ============================================================
      CONFIG GATE — first-time setup
@@ -2896,12 +2962,17 @@ function renderToday() {
     const multi = todayWorkouts.length > 1;
     const allDone = todayWorkouts.every(x => x.status === 'done');
     html += `<div class="card-hero workout-cta">
-      <div class="card-row" style="margin-bottom:8px;">
+      <div class="card-row" style="margin-bottom:10px;">
         <span class="eyebrow">Today${multi ? ` · ${todayWorkouts.length} sessions` : ''}</span>
         ${allDone ? '<span class="badge done">All done</span>' : (done ? '<span class="badge done">Done</span>' : (isPeloton ? '<span class="badge">Peloton</span>' : ''))}
       </div>
-      <div class="wc-title" onclick="openTodayWorkout()" style="cursor:pointer;">${escapeHtml(disp.primary)}</div>
-      ${disp.secondary ? `<div class="wc-sub" onclick="openTodayWorkout()" style="cursor:pointer;">${escapeHtml(disp.secondary)}</div>` : ''}
+      <div style="display:flex;gap:12px;align-items:center;" onclick="openTodayWorkout()">
+        ${sessionIconTile(w.session_type)}
+        <div style="min-width:0;cursor:pointer;">
+          <div class="wc-title">${escapeHtml(disp.primary)}</div>
+          ${disp.secondary ? `<div class="wc-sub">${escapeHtml(disp.secondary)}</div>` : ''}
+        </div>
+      </div>
       <div class="btn-row">
         ${allDone
           ? `<button class="btn ghost block" onclick="openTodayWorkout()">View sessions</button>`
@@ -3106,6 +3177,31 @@ function openWeightEntryFor(dateISO) {
 
 function sessionTypeLabel(t) {
   return { ride:'Ride', strength:'Strength', yoga:'Yoga', stretch:'Stretch', walk:'Walk', run:'Run', other:'Workout', rest:'Rest day' }[t] || t;
+}
+
+// Per-session-type colour + line icon ("workout art")
+function sessionTint(t) {
+  return { ride:'#19e08a', run:'#b3a0ff', strength:'#5cc6ff', yoga:'#5de0c4', walk:'#ffd23d', stretch:'#ff9d6b', other:'#8a93a3', rest:'#8a93a3' }[t] || '#8a93a3';
+}
+function sessionIcon(t, size) {
+  const s = size || 22;
+  const paths = {
+    ride: '<circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l4-7h5l3 7M10 10l1.5-3H15"/>',
+    run: '<circle cx="15" cy="5" r="2"/><path d="M5 20l3-5 3 1 1-4 3 3 3 1M9 11l3-3 3 2"/>',
+    strength: '<path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/>',
+    yoga: '<circle cx="12" cy="5" r="2"/><path d="M12 7v6M12 13l-5 6M12 13l5 6M7 11h10"/>',
+    walk: '<circle cx="13" cy="5" r="2"/><path d="M11 8l-2 6 2 5M13 8l3 4-1 7M9 11l2.5-3"/>',
+    stretch: '<circle cx="12" cy="5" r="2"/><path d="M12 7v5l-4 7M12 12l4 7M8 9h8"/>',
+    other: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+    rest: '<path d="M14 4h6l-6 8h6M5 13h4l-4 6h4"/>',
+  };
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[t] || paths.other}</svg>`;
+}
+// A coloured icon tile for a session type
+function sessionIconTile(t, px) {
+  const size = px || 46;
+  const tint = sessionTint(t);
+  return `<div style="width:${size}px;height:${size}px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${tint}22;color:${tint};">${sessionIcon(t, Math.round(size * 0.52))}</div>`;
 }
 function timeOfDayLabel(t) {
   return { early:'Early', morning:'Morning', midday:'Midday', afternoon:'Afternoon', evening:'Evening', late:'Late' }[t] || '';
@@ -3965,7 +4061,8 @@ function renderExercise() {
 
         html += `<div onclick="openWorkoutById('${w.id}','${d}')" style="cursor:pointer;margin-top:${topMargin};${borderTop}">
           <div style="${cancelStyle}">
-            <div class="card-meta" style="margin-top:0;display:flex;align-items:center;gap:8px;">
+            <div class="card-meta" style="margin-top:0;display:flex;align-items:center;gap:10px;">
+              <span style="color:${sessionTint(w.session_type)};display:inline-flex;flex-shrink:0;">${sessionIcon(w.session_type, 18)}</span>
               <span style="flex:1;">${escapeHtml(display.primary)}${timeLabel ? ` <span style="color:var(--ink-4);font-size:12px;">· ${escapeHtml(timeLabel)}</span>` : ''}</span>
               ${statusBadge}
             </div>
