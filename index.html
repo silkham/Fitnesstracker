@@ -1507,7 +1507,7 @@ const State = {
 // ============================================================
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
-const BUILD = 'BUILD 10 · emerald · 0.1kg';
+const BUILD = 'BUILD 11 · single-user · graph fix';
 try { document.getElementById('buildTag').textContent = BUILD; } catch (e) {}
 
 // Baked-in defaults so no device ever has to paste config.
@@ -1560,6 +1560,33 @@ function getConfig() {
 }
 function setConfig(url, key) {
   localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
+}
+
+// Single-user: resolve which member belongs to the signed-in account (no picker needed).
+function resolveActiveMember() {
+  if (!State.members.length) return null;
+  // 1. membership row's member, if the DB linked one
+  if (State._suggestedMemberId) {
+    const s = State.members.find(m => m.id === State._suggestedMemberId);
+    if (s) return s;
+  }
+  // 2. a previously-remembered choice on this device
+  const savedSlot = localStorage.getItem(DEVICE_MEMBER_KEY);
+  if (savedSlot) {
+    const m = State.members.find(x => x.slot === savedSlot);
+    if (m) return m;
+  }
+  // 3. match a member's first name against the signed-in email (e.g. lachlan… → Lachlan)
+  const emailLocal = ((State.user && State.user.email) || '').split('@')[0].toLowerCase();
+  if (emailLocal) {
+    const byName = State.members.find(m => {
+      const n = (m.display_name || '').toLowerCase().split(/\s+/)[0];
+      return n && (emailLocal.includes(n) || n.includes(emailLocal));
+    });
+    if (byName) return byName;
+  }
+  // 4. fallback
+  return State.members[0];
 }
 
 // ============================================================
@@ -1811,23 +1838,10 @@ async function loadAll() {
       .gte('date', State.weekStart)
       .lte('date', weekEnd);
     State.personalSlots = personal || [];
-    const savedSlot = localStorage.getItem(DEVICE_MEMBER_KEY);
-    if (savedSlot === 'a' || savedSlot === 'b') {
-      const m = State.members.find(x => x.slot === savedSlot);
-      State.activeMemberId = m?.id || State.members[0]?.id;
-    } else if (State._suggestedMemberId) {
-      // Joiner: their membership row says which member they are. Auto-bind.
-      const suggested = State.members.find(m => m.id === State._suggestedMemberId);
-      if (suggested) {
-        State.activeMemberId = suggested.id;
-        localStorage.setItem(DEVICE_MEMBER_KEY, suggested.slot);
-      } else {
-        State.activeMemberId = State.members[0]?.id || null;
-      }
-    } else {
-      // No identity chosen on this device yet — show picker after load completes
-      State.activeMemberId = State.members[0]?.id || null;
-    }
+    // Single-user: auto-bind to the member that belongs to the signed-in account. No picker.
+    const me = resolveActiveMember();
+    State.activeMemberId = me?.id || State.members[0]?.id || null;
+    if (me?.slot) localStorage.setItem(DEVICE_MEMBER_KEY, me.slot);
     applyMemberTheme();
 
     // realtime
@@ -1835,12 +1849,6 @@ async function loadAll() {
 
     setSync('synced', 'Synced');
     renderAll();
-
-    // If no identity set AND no suggestion from membership, show picker
-    const stillNeedsPicker = savedSlot !== 'a' && savedSlot !== 'b' && !State._suggestedMemberId;
-    if (stillNeedsPicker && State.members.length >= 2) {
-      showIdentityPicker();
-    }
 
     // Quiet auto-sync of Peloton calendars (no UI noise)
     autoSyncIfDue();
@@ -3072,11 +3080,17 @@ function renderSparkline(weights) {
 function renderWeightChart(weights, goal) {
   if (weights.length < 2) return '<div class="tiny" style="padding:18px 0;color:var(--ink-4);">Log at least two weigh-ins to see your trend.</div>';
   const vals = weights.map(w => parseFloat(w.weight_kg));
-  let min = Math.min(...vals);
-  let max = Math.max(...vals);
-  if (goal != null) { min = Math.min(min, goal); max = Math.max(max, goal); }
-  const pad = (max - min) * 0.12 || 1;
-  min -= pad; max += pad;
+  // Scale to the WEIGHT DATA so the trend always uses the full height and stays visible.
+  // Only pull the goal into range if it's close; otherwise the goal line is clamped to the edge.
+  const dmin = Math.min(...vals);
+  const dmax = Math.max(...vals);
+  const span = (dmax - dmin) || 1;
+  let min = dmin - span * 0.18;
+  let max = dmax + span * 0.18;
+  if (goal != null) {
+    if (goal < min && (min - goal) < span * 1.2) min = goal - span * 0.1;
+    if (goal > max && (goal - max) < span * 1.2) max = goal + span * 0.1;
+  }
   const range = max - min || 1;
   const w = 320, h = 130, px = 4, py = 8;
   const xStep = (w - px * 2) / (vals.length - 1);
@@ -3084,7 +3098,8 @@ function renderWeightChart(weights, goal) {
   const points = vals.map((v, i) => [px + i * xStep, yFor(v)]);
   const pathD = points.map((pt, i) => (i === 0 ? 'M' : 'L') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
   const areaD = pathD + ` L ${(w - px).toFixed(1)} ${h - py} L ${px} ${h - py} Z`;
-  const goalY = goal != null ? yFor(goal).toFixed(1) : null;
+  // Clamp the goal line into the visible band so it shows as an edge reference when far away.
+  const goalY = goal != null ? Math.max(py, Math.min(h - py, yFor(goal))).toFixed(1) : null;
   return `<svg class="spark-svg" style="height:130px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <path class="area" fill="var(--accent)" fill-opacity="0.18" stroke="none" d="${areaD}"/>
     ${goalY != null ? `<line x1="${px}" y1="${goalY}" x2="${w - px}" y2="${goalY}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` : ''}
@@ -5369,8 +5384,8 @@ function renderProfile() {
   if (!root) return;
   let html = '';
 
-  // ============== MEMBER CARDS — most-used, at top ==============
-  State.members.forEach(m => {
+  // ============== MEMBER CARD — single user, just you ==============
+  [activeMember()].filter(Boolean).forEach(m => {
     const programLabel = m.current_program === 'c25k' ? `C25K · week ${m.current_program_week||1}` : null;
     html += `<div class="member-card" data-member-card="${m.slot}">
       <div class="mc-head">
@@ -5384,50 +5399,12 @@ function renderProfile() {
     </div>`;
   });
 
-  // ============== DINNER TARGETS ==============
-  const dt = State.settings?.dinner_targets || { red: 1, white: 2, fish: 1, veg: 1 };
-  const dtTotal = (dt.red||0) + (dt.white||0) + (dt.fish||0) + (dt.veg||0);
-  const dtComplete = Math.max(0, 7 - dtTotal);
-  html += `<div class="card" style="margin-top:14px;">
-    <div class="card-eyebrow" style="margin-bottom:12px;"><span class="eyebrow">Weekly dinner targets</span></div>
-    <div class="tiny" style="margin-bottom:14px;color:var(--ink-3);">Set how many of each protein type per week. Veg nights are always complete meals. The remainder becomes free slots Magic Week can fill with anything.</div>
-    ${[['red','Red meat'],['white','White meat'],['fish','Fish'],['veg','Veg']].map(([k,l]) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <span style="font-size:14px;color:var(--ink-2);">${l}</span>
-      <div class="stepper" style="transform:scale(0.9);transform-origin:right center;">
-        <button onclick="adjDinnerTarget('${k}',-1)">−</button>
-        <span class="v" id="dt_${k}">${dt[k]||0}</span>
-        <button onclick="adjDinnerTarget('${k}',1)">+</button>
-      </div>
-    </div>`).join('')}
-    <div style="padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <span class="tiny" style="color:var(--ink-4);">Free / complete meal nights</span>
-      <span class="tiny" style="color:var(--ink-4);" id="dt_complete">${dtComplete} nights</span>
-    </div>
-    <button class="btn primary block" onclick="saveDinnerTargets()">Save</button>
-  </div>`;
-  const joinCode = State.household?.join_code;
-  if (joinCode) {
-    html += `<div class="card" style="margin-top:14px;">
-      <div class="card-eyebrow"><span class="eyebrow">Household</span></div>
-      <div class="tiny" style="margin-top:6px;line-height:1.5;color:var(--ink-3);">
-        Share this code with your partner so they can sign up with their own email to join.
-      </div>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-        <div style="flex:1;background:var(--paper-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:0.18em;text-align:center;color:var(--ink);">${escapeHtml(joinCode)}</div>
-        <button class="card-action" onclick="copyJoinCode('${escapeHtml(joinCode)}')">Copy</button>
-      </div>
-    </div>`;
-  }
-
-  // ============== THIS DEVICE — sign-in info ==============
+  // ============== ACCOUNT — sign-in info ==============
   const me = activeMember();
-  html += `<div class="card">
-    <div class="card-eyebrow"><span class="eyebrow">This device</span></div>
-    <div class="mc-row" style="margin-top:8px;"><span class="k">Signed in as</span><span class="v">${me ? escapeHtml(me.display_name) : '—'}</span></div>
-    <div class="mc-row"><span class="k">Email</span><span class="v" style="font-size:12px;">${escapeHtml(State.user.email)}</span></div>
-    <button class="btn ghost block" style="margin-top:10px;" onclick="switchDeviceIdentity()">I'm not ${me ? escapeHtml(me.display_name) : '—'}</button>
-    <button class="btn ghost block" style="margin-top:6px;" onclick="signOut()">Sign out</button>
+  html += `<div class="card" style="margin-top:14px;">
+    <div class="card-eyebrow"><span class="eyebrow">Account</span></div>
+    <div class="mc-row" style="margin-top:8px;"><span class="k">Email</span><span class="v" style="font-size:12px;">${escapeHtml(State.user.email)}</span></div>
+    <button class="btn ghost block" style="margin-top:10px;" onclick="signOut()">Sign out</button>
   </div>`;
 
   // ============== SETTINGS — collapsible ==============
