@@ -11,7 +11,12 @@
       "Bash(git commit -q -m 'Redesign core: athletic dashboard, Weight tab, new nav, Archivo type *)",
       "Bash(git push *)",
       "mcp__Claude_Preview__preview_start",
-      "Bash(git commit -q -m 'Add simple weekly meal planner \\(name + source + link\\) *)"
+      "Bash(git commit -q -m 'Add simple weekly meal planner \\(name + source + link\\) *)",
+      "Bash(grep -noE \"color:[ ]?\\(#[0-9a-fA-F]{3,8}|[a-z]+|var\\\\\\(--[a-z0-9-]+\\\\\\)\\)\" index.html)",
+      "Bash(awk -F: '$1>1300')",
+      "Bash(grep -noE \"[^-]color:[ ]?#[0-9a-fA-F]{3,8}\" index.html)",
+      "Bash(sort -t: -k3)",
+      "Bash(git commit -q -m 'Fix low-contrast hint text \\(lift --ink-3/--ink-4 for readability on deep bg\\) *)"
     ]
   }
 }
