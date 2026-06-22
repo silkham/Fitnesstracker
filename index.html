@@ -1259,20 +1259,6 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 }
 .meal-slot-add { flex-shrink: 0; color: var(--ink-4); font-size: 18px; padding: 0 4px; }
 
-/* temporary build/version stamp (helps confirm fresh code vs cache) */
-.build-tag {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(72px + env(safe-area-inset-bottom));
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-  opacity: 0.7;
-  z-index: 40;
-  pointer-events: none;
-}
-
 /* utility */
 .spacer-sm { height: 8px; }
 .spacer-md { height: 16px; }
@@ -1448,8 +1434,6 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
   </nav>
 </div>
 
-<div class="build-tag" id="buildTag"></div>
-
 <!-- ============================================================
      SHEETS (modals)
 ============================================================ -->
@@ -1506,8 +1490,6 @@ const State = {
 // ============================================================
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
-const BUILD = 'BUILD 13 · accent cycle fixed';
-try { document.getElementById('buildTag').textContent = BUILD; } catch (e) {}
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
