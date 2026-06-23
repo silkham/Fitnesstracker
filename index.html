@@ -1536,6 +1536,7 @@ const State = {
   workouts: [],         // current week's workouts
   weights: [],          // all weight entries (history)
   strengthSets: [],     // strength_sets rows (history)
+  healthMetrics: [],    // daily HRV / resting HR / VO2max (for readiness)
   shoppingItems: [],
   mealPlan: null,       // week_plans row currently shown in the Meals tab
   mealWeekStart: null,  // ISO Monday of the meals tab's viewed week
@@ -1553,7 +1554,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v2.0 (build 2)';
+const APP_VERSION = 'Stride · v3.0 β (build 1)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -1849,6 +1850,18 @@ async function loadAll() {
         .order('created_at', { ascending: false });
       State.strengthSets = setErr ? [] : (sets || []);
     } catch (e) { State.strengthSets = []; }
+
+    // load daily health metrics (last 90 days) for readiness. Resilient.
+    try {
+      const since = isoDateAddDays(todayISO(), -90);
+      const { data: hm, error: hmErr } = await State.client
+        .from('health_metrics')
+        .select('*')
+        .eq('member_id', State.activeMemberId || (members.data && members.data[0] && members.data[0].id))
+        .gte('metric_date', since)
+        .order('metric_date', { ascending: true });
+      State.healthMetrics = hmErr ? [] : (hm || []);
+    } catch (e) { State.healthMetrics = []; }
 
     // load ingredients
     if (State.recipes.length) {
@@ -2930,6 +2943,43 @@ function computeStreak(memberId) {
   return streak;
 }
 
+// Daily readiness from HRV + resting-HR vs a personal baseline (Path A, daytime-only).
+// Needs ~7 days of data to calibrate a baseline first.
+function computeReadiness(memberId) {
+  const ms = State.healthMetrics
+    .filter(m => m.member_id === memberId && (m.hrv != null || m.resting_hr != null))
+    .sort((a, b) => a.metric_date.localeCompare(b.metric_date)); // oldest→newest
+  if (!ms.length) return { state: 'none' };
+  const latest = ms[ms.length - 1];
+  const prior = ms.slice(0, ms.length - 1).slice(-30);
+  const hrvVals = prior.map(m => parseFloat(m.hrv)).filter(v => !isNaN(v));
+  const rhrVals = prior.map(m => parseFloat(m.resting_hr)).filter(v => !isNaN(v));
+  const NEED = 7;
+  if (hrvVals.length < NEED && rhrVals.length < NEED) {
+    return { state: 'calibrating', daysOfData: ms.length, need: NEED };
+  }
+  const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+  let comp = 0, parts = 0;
+  const contrib = [];
+  const tHrv = parseFloat(latest.hrv), tRhr = parseFloat(latest.resting_hr);
+  if (hrvVals.length >= NEED && !isNaN(tHrv)) {
+    const base = mean(hrvVals);
+    comp += Math.max(-40, Math.min(40, (tHrv / base - 1) * 220)) * 0.62; parts += 0.62;
+    contrib.push(`HRV ${tHrv >= base ? '↑' : '↓'} vs norm`);
+  }
+  if (rhrVals.length >= NEED && !isNaN(tRhr)) {
+    const base = mean(rhrVals);
+    comp += Math.max(-25, Math.min(25, (base - tRhr) * 4)) * 0.38; parts += 0.38;
+    contrib.push(`Resting HR ${Math.round(tRhr)}${tRhr < base - 0.5 ? ' · low' : tRhr > base + 0.5 ? ' · high' : ''}`);
+  }
+  const score = Math.round(Math.max(1, Math.min(100, 66 + comp / (parts || 1))));
+  let status, guidance, cls;
+  if (score >= 66) { status = 'Recovered'; guidance = 'Good day to push.'; cls = 'good'; }
+  else if (score >= 45) { status = 'Steady'; guidance = 'Train as planned.'; cls = 'ok'; }
+  else { status = 'Run-down'; guidance = 'Keep it easy or recover.'; cls = 'low'; }
+  return { state: 'ready', score, status, guidance, cls, contributors: contrib.join(' · '), daysOfData: ms.length };
+}
+
 // One-tap "mark done" from the dashboard, without opening the sheet.
 async function markWorkoutDoneQuick(id) {
   const w = State.workouts.find(x => x.id === id);
@@ -3005,6 +3055,39 @@ function renderToday() {
   const weekTarget = parseInt(m.weekly_session_target, 10) || 4;
 
   let html = '';
+
+  // ---- This morning · readiness ----
+  {
+    const r = computeReadiness(m.id);
+    const ringColor = { good: '#2bf09c', ok: '#ffb84d', low: '#ff6b6b' };
+    if (r.state === 'calibrating') {
+      html += `<div class="card-hero">
+        <div class="eyebrow" style="margin-bottom:6px;">This morning</div>
+        <div class="wc-title" style="font-size:16px;">Calibrating your readiness…</div>
+        <div class="wc-sub">Learning your baseline from HRV &amp; resting HR — about ${Math.max(1, (r.need || 7) - (r.daysOfData || 0))} more day${Math.max(1, (r.need || 7) - (r.daysOfData || 0)) === 1 ? '' : 's'} of data and your daily score kicks in.</div>
+      </div>`;
+    } else if (r.state === 'ready') {
+      const col = ringColor[r.cls] || '#2bf09c';
+      const off = Math.round(314 * (1 - r.score / 100));
+      html += `<div class="card-hero">
+        <div class="eyebrow" style="margin-bottom:10px;">This morning</div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <div style="position:relative;width:84px;height:84px;flex-shrink:0;">
+            <svg viewBox="0 0 120 120" style="width:84px;height:84px;transform:rotate(-90deg);">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12"/>
+              <circle cx="60" cy="60" r="50" fill="none" stroke="${col}" stroke-width="12" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="${off}"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span class="stat-num" style="font-size:26px;color:var(--ink);">${r.score}</span></div>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:16px;color:var(--ink);font-weight:700;">${r.status}</div>
+            <div style="font-size:13px;color:var(--ink-3);margin:1px 0 6px;">${r.guidance}</div>
+            <div class="tiny" style="color:var(--ink-4);">${r.contributors}</div>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
 
   // ---- Weight hero ----
   if (latestVal != null || m.weight_start_kg || goalVal) {
