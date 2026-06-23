@@ -129,6 +129,26 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---- daily health metrics (HRV, resting HR, VO2 max) for readiness ----
+  const hm: Record<string, any> = {};
+  for (const metric of metricsRaw) {
+    const name = String(metric?.name ?? "").toLowerCase();
+    let field: string | null = null;
+    if (name.includes("variability")) field = "hrv";
+    else if (name.includes("resting")) field = "resting_hr";
+    else if (name.includes("vo2")) field = "vo2max";
+    else if (name.includes("respiratory")) field = "respiratory_rate";
+    if (!field) continue;
+    for (const pt of (metric.data ?? [])) {
+      const d = dayOf(pt.date);
+      const v = num(pt.qty ?? pt.value ?? pt.Avg ?? pt.avg);
+      if (!d || v == null) continue;
+      hm[d] = hm[d] || { household_id: HOUSEHOLD_ID, member_id: MEMBER_ID, metric_date: d };
+      hm[d][field] = field === "resting_hr" ? Math.round(v) : Math.round(v * 100) / 100;
+    }
+  }
+  const metricRows = Object.values(hm);
+
   const upsert = async (table: string, onConflict: string, rows: any[]) => {
     if (!rows.length) return { sent: 0 };
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
@@ -148,6 +168,9 @@ Deno.serve(async (req) => {
     ok: true,
     workouts: await upsert("workouts", "member_id,health_uid", workoutRows),
     weight: await upsert("weight_entries", "member_id,logged_at", weightRows),
+    metrics: await upsert("health_metrics", "member_id,metric_date", metricRows),
+    // TEMP: confirm the exact metric names Health Auto Export sends, then remove.
+    debug_metric_names: metricsRaw.map((m: any) => m?.name),
   };
   return json(result);
 });
