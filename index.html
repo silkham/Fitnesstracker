@@ -1139,7 +1139,8 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .sync-status {
   position: fixed;
   top: calc(8px + env(safe-area-inset-top));
-  right: 12px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1152,6 +1153,25 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
   opacity: 0;
   transition: opacity var(--dur);
 }
+/* Gmail-style account circle, top-right */
+.avatar-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: max(14px, calc((100vw - 480px) / 2 + 14px));
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 0.5px solid var(--glass-line);
+  font-family: 'Archivo', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 46;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.avatar-btn:active { transform: scale(0.92); }
 .sync-status.show { opacity: 1; }
 .sync-status .d { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-4); }
 .sync-status.synced .d { background: var(--moss); }
@@ -1333,6 +1353,9 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 
   <div class="sync-status" id="syncStatus"><span class="d"></span><span id="syncText">Synced</span></div>
 
+  <!-- Account circle (top-right, opens You/profile) -->
+  <button class="avatar-btn" id="avatarBtn" onclick="switchScreen('profile')" aria-label="You">L</button>
+
   <!-- ============== TODAY ============== -->
   <section class="screen active" id="screen-today">
     <div class="greeting">
@@ -1372,6 +1395,18 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
     </div>
 
     <div id="weightContent">
+      <div class="card-hero"><div class="skel skel-eyebrow"></div><div class="skel skel-big"></div><div class="skel skel-meta"></div></div>
+      <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>
+    </div>
+  </section>
+
+  <!-- ============== PROGRESS ============== -->
+  <section class="screen" id="screen-progress">
+    <div class="greeting" style="padding-bottom: 8px;">
+      <h1 class="display"><em>Progress</em></h1>
+      <div class="greeting-sub" id="progressSub">—</div>
+    </div>
+    <div id="progressContent">
       <div class="card-hero"><div class="skel skel-eyebrow"></div><div class="skel skel-big"></div><div class="skel skel-meta"></div></div>
       <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>
     </div>
@@ -1419,6 +1454,10 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
       <svg viewBox="0 0 24 24"><path d="M3 12h2M19 12h2M7 8v8M17 8v8M7 12h10"/></svg>
       <span>Train</span>
     </button>
+    <button class="tab" data-screen="progress" onclick="switchScreen('progress')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/></svg>
+      <span>Progress</span>
+    </button>
     <button class="tab" data-screen="weight" onclick="switchScreen('weight')">
       <svg viewBox="0 0 24 24"><path d="M4 19h16M5 19l3-10h8l3 10M9 9V7a3 3 0 0 1 6 0v2"/></svg>
       <span>Weight</span>
@@ -1426,10 +1465,6 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
     <button class="tab" data-screen="meals" onclick="switchScreen('meals')">
       <svg viewBox="0 0 24 24"><path d="M5 4v8a4 4 0 0 0 4 4v4"/><path d="M9 4v6"/><path d="M13 4v6"/><path d="M17 4c0 4-1 6-3 6 0 4 1 6 3 6v4"/></svg>
       <span>Meals</span>
-    </button>
-    <button class="tab" data-screen="profile" onclick="switchScreen('profile')">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5"/><path d="M5 20c0-3.5 3.5-6 7-6s7 2.5 7 6"/></svg>
-      <span>You</span>
     </button>
   </nav>
 </div>
@@ -2756,8 +2791,10 @@ function daysUntil(iso) {
 function switchScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('screen-' + name).classList.add('active');
-  document.querySelector(`.tab[data-screen="${name}"]`).classList.add('active');
+  const screen = document.getElementById('screen-' + name);
+  if (screen) screen.classList.add('active');
+  const tab = document.querySelector(`.tab[data-screen="${name}"]`); // null for screens not in the bar (e.g. profile)
+  if (tab) tab.classList.add('active');
   window.scrollTo(0, 0);
 }
 
@@ -2790,9 +2827,14 @@ function closeSheet() {
 // ============================================================
 function renderAll() {
   renderPartnerAmbient();
+  // top-right account circle initial
+  const _m = activeMember();
+  const _ab = document.getElementById('avatarBtn');
+  if (_ab && _m) _ab.textContent = ((_m.display_name || '?')[0] || '?').toUpperCase();
   renderToday();
   renderExercise();
   renderWeight();
+  renderProgress();
   renderMeals();
   renderProfile();
   // Post-render: animate any [data-num-id] spans whose value changed
@@ -3186,6 +3228,135 @@ function formatHistoryDate(iso) {
 // Open the weight entry sheet pre-filled for a specific past date
 function openWeightEntryFor(dateISO) {
   openWeightEntry(dateISO);
+}
+
+// ============================================================
+// RENDER · PROGRESS (trajectory to goal + training insights)
+// ============================================================
+// Project weight to goal using the recent (≤8 week) trend.
+function computeProjection(weights, goal) {
+  if (!weights || weights.length < 2 || goal == null) return null;
+  const sorted = weights.slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at)); // oldest→newest
+  const newest = sorted[sorted.length - 1];
+  const cutoff = isoDateAddDays(newest.logged_at, -56);
+  const win = sorted.filter(w => w.logged_at >= cutoff);
+  const a = win[0], b = win[win.length - 1];
+  const days = Math.max(1, (new Date(b.logged_at + 'T00:00:00') - new Date(a.logged_at + 'T00:00:00')) / 86400000);
+  const ratePerWeek = (parseFloat(b.weight_kg) - parseFloat(a.weight_kg)) / (days / 7); // <0 = losing
+  const latest = parseFloat(b.weight_kg);
+  const toGo = latest - goal;
+  let weeksToGoal = null, goalDate = null, onTrack = false;
+  if (toGo <= 0) onTrack = true;
+  else if (ratePerWeek < -0.02) {
+    weeksToGoal = toGo / Math.abs(ratePerWeek);
+    goalDate = new Date(Date.now() + weeksToGoal * 7 * 86400000);
+    onTrack = true;
+  }
+  return { ratePerWeek, latest, toGo, weeksToGoal, goalDate, onTrack };
+}
+
+function fmtGoalDate(d) {
+  const opts = { day: 'numeric', month: 'short' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString('en-GB', opts);
+}
+
+// Actual weight line (solid) + projection (dashed) to the goal line.
+function renderTrajectoryChart(weights, goal, proj) {
+  const sorted = weights.slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at));
+  if (sorted.length < 2) return '<div class="tiny" style="padding:18px 0;color:var(--ink-4);">Log a couple of weigh-ins to see your trajectory.</div>';
+  const w = 320, h = 140, px = 6, py = 10;
+  const t0 = new Date(sorted[0].logged_at + 'T00:00:00').getTime();
+  const tNow = new Date(sorted[sorted.length - 1].logged_at + 'T00:00:00').getTime();
+  const tEnd = (proj && proj.goalDate) ? proj.goalDate.getTime() : tNow;
+  const tMax = Math.max(tEnd, tNow + 86400000);
+  const tx = t => px + ((t - t0) / (tMax - t0 || 1)) * (w - px * 2);
+  const vals = sorted.map(s => parseFloat(s.weight_kg));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (goal != null) lo = Math.min(lo, goal);
+  const padv = (hi - lo) * 0.12 || 1; lo -= padv; hi += padv;
+  const vy = v => h - py - ((v - lo) / (hi - lo || 1)) * (h - py * 2);
+  const pts = sorted.map(s => [tx(new Date(s.logged_at + 'T00:00:00').getTime()), vy(parseFloat(s.weight_kg))]);
+  const actualD = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const areaD = actualD + ` L ${pts[pts.length - 1][0].toFixed(1)} ${h - py} L ${pts[0][0].toFixed(1)} ${h - py} Z`;
+  let projD = '';
+  if (proj && proj.goalDate && goal != null) {
+    const last = pts[pts.length - 1];
+    projD = `M ${last[0].toFixed(1)} ${last[1].toFixed(1)} L ${tx(proj.goalDate.getTime()).toFixed(1)} ${vy(goal).toFixed(1)}`;
+  }
+  const goalY = goal != null ? vy(goal).toFixed(1) : null;
+  return `<svg class="spark-svg" style="height:140px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path d="${areaD}" style="fill:var(--accent);fill-opacity:0.16;stroke:none"/>
+    ${goalY != null ? `<line x1="${px}" y1="${goalY}" x2="${w - px}" y2="${goalY}" style="stroke:var(--accent);stroke-width:1;stroke-dasharray:3 4;opacity:0.4"/>` : ''}
+    ${projD ? `<path d="${projD}" style="fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:2 5;opacity:0.85"/>` : ''}
+    <path d="${actualD}" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>
+  </svg>`;
+}
+
+function renderProgress() {
+  const m = activeMember();
+  const root = document.getElementById('progressContent');
+  if (!root || !m) return;
+  const myWeights = State.weights.filter(w => w.member_id === m.id);
+  const goal = m.weight_goal_kg ? parseFloat(m.weight_goal_kg) : null;
+  const startVal = m.weight_start_kg ? parseFloat(m.weight_start_kg) : null;
+  const latest = myWeights[0] ? parseFloat(myWeights[0].weight_kg) : null;
+  const proj = computeProjection(myWeights, goal);
+  const today = todayISO();
+
+  let sub = 'Your journey';
+  if (latest != null && goal != null && latest <= goal) sub = 'goal reached 🎉';
+  else if (proj && proj.onTrack && proj.goalDate) sub = `on track · goal by ${fmtGoalDate(proj.goalDate)}`;
+  else if (goal != null) sub = 'keep going · log to project';
+  const subEl = document.getElementById('progressSub');
+  if (subEl) subEl.textContent = sub;
+
+  let html = '';
+
+  if (latest != null && goal != null) {
+    const toGo = latest - goal;
+    const rateStr = proj ? `${proj.ratePerWeek <= 0 ? '−' : '+'}${Math.abs(proj.ratePerWeek).toFixed(2)} kg/wk` : '';
+    html += `<div class="card-hero">
+      <div class="card-row" style="align-items:flex-start;">
+        <div>
+          <div class="eyebrow" style="margin-bottom:6px;">Now</div>
+          <div class="stat-hero">${latest.toFixed(1)}<span class="u">kg</span></div>
+        </div>
+        <div style="text-align:right;padding-top:14px;">
+          <div class="spark-delta ${proj && proj.ratePerWeek < 0 ? 'down' : ''}" style="font-weight:700;">${rateStr}</div>
+          <div class="tiny" style="color:var(--ink-4);">${toGo > 0 ? toGo.toFixed(1) + ' kg to go' : 'goal reached'}</div>
+        </div>
+      </div>
+      ${renderTrajectoryChart(myWeights, goal, proj)}
+      <div class="goal-row"><span>${startVal != null ? startVal.toFixed(0) + ' start' : ''}</span><span>today</span><span>${goal.toFixed(0)} goal</span></div>
+    </div>`;
+
+    const lostStr = (startVal != null) ? (startVal - latest).toFixed(1) : null;
+    html += `<div class="stat-grid">
+      <div class="stat-tile"><div class="stat-num">${proj && proj.weeksToGoal != null ? '~' + Math.round(proj.weeksToGoal) + '<span class="frac"> wks</span>' : '—'}</div><div class="stat-label">to goal at this pace</div></div>
+      ${lostStr != null ? `<div class="stat-tile"><div class="stat-num"><span class="accent">${lostStr}</span><span class="frac">kg</span></div><div class="stat-label">lost so far</div></div>` : ''}
+    </div>`;
+  } else {
+    html += `<div class="card-hero"><div class="eyebrow" style="margin-bottom:6px;">Progress</div><div class="wc-title">Set a start &amp; goal weight</div><div class="wc-sub">Add them in You (top-right) to see your trajectory.</div></div>`;
+  }
+
+  // Training insights — last 30 days
+  {
+    const since = isoDateAddDays(today, -30);
+    const done30 = State.workouts.filter(w => w.member_id === m.id && w.status === 'done' && w.planned_for >= since && w.planned_for <= today);
+    const mins30 = done30.reduce((s, w) => s + (w.duration_min || 0), 0);
+    const kcal30 = done30.reduce((s, w) => s + (w.calories || 0), 0);
+    const hrs = Math.floor(mins30 / 60), rem = mins30 % 60;
+    const timeStr = mins30 >= 60 ? `${hrs}h ${rem}` : `${mins30}`;
+    html += `<div class="section-head"><span class="t">Last 30 days</span></div>
+    <div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:16px 14px;">
+      <div><div class="stat-num" style="font-size:24px;"><span class="accent">${done30.length}</span></div><div class="stat-label">sessions</div></div>
+      <div><div class="stat-num" style="font-size:24px;">${timeStr}<span class="frac">${mins30 >= 60 ? 'm' : ' min'}</span></div><div class="stat-label">trained</div></div>
+      ${kcal30 > 0 ? `<div><div class="stat-num" style="font-size:24px;color:#ffb84d;">${kcal30.toLocaleString()}</div><div class="stat-label">kcal</div></div>` : ''}
+    </div>`;
+  }
+
+  root.innerHTML = html;
 }
 
 function sessionTypeLabel(t) {
