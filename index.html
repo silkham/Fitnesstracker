@@ -1279,6 +1279,41 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 }
 .meal-slot-add { flex-shrink: 0; color: var(--ink-4); font-size: 18px; padding: 0 4px; }
 
+/* ============================================================
+   D · TIME-OF-DAY HERO + entrance polish
+============================================================ */
+.tod-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  padding: 20px 18px 18px;
+  margin-bottom: 14px;
+  min-height: 108px;
+  border: 0.5px solid var(--glass-line);
+}
+.tod-hero .greeting { padding: 0; position: relative; z-index: 1; }
+.tod-hero .greeting .display { color: #fff; }
+.tod-hero .greeting-sub { color: rgba(255,255,255,0.72); }
+.tod-hero .orb { position: absolute; border-radius: 50%; z-index: 0; width: 96px; height: 96px; }
+.tod-dawn  { background: linear-gradient(135deg,#1b2a4a,#3a2f4f 55%,#6a3f4a); }
+.tod-dawn  .orb { background: radial-gradient(circle, #ffd6a8, #ff9e63 45%, transparent 70%); right: 16px; bottom: -24px; }
+.tod-day   { background: linear-gradient(135deg,#10243a,#1b4a4a 55%,#2c6b4f); }
+.tod-day   .orb { background: radial-gradient(circle, #ecffd6, #b6f06b 42%, transparent 70%); right: 22px; top: -26px; }
+.tod-dusk  { background: linear-gradient(135deg,#1a1f3a,#4a2f4a 50%,#7a3f33); }
+.tod-dusk  .orb { background: radial-gradient(circle, #ffcaa0, #ff7e57 45%, transparent 70%); right: 18px; bottom: -22px; }
+.tod-night { background: linear-gradient(135deg,#0a0f1f,#141a33 55%,#1c2647); }
+.tod-night .orb { width: 66px; height: 66px; background: radial-gradient(circle, #eef2ff, #a9b8e0 45%, transparent 72%); right: 24px; top: -16px; }
+
+/* staggered card entrance on every screen's content */
+#exerciseContent > *, #weightContent > *, #progressContent > *, #mealsContent > *, #profileContent > * {
+  animation: cardSettle var(--dur-slow) var(--ease-settle) both;
+}
+#exerciseContent > :nth-child(1), #weightContent > :nth-child(1), #progressContent > :nth-child(1), #mealsContent > :nth-child(1) { animation-delay: 0ms; }
+#exerciseContent > :nth-child(2), #weightContent > :nth-child(2), #progressContent > :nth-child(2), #mealsContent > :nth-child(2) { animation-delay: 55ms; }
+#exerciseContent > :nth-child(3), #weightContent > :nth-child(3), #progressContent > :nth-child(3), #mealsContent > :nth-child(3) { animation-delay: 110ms; }
+#exerciseContent > :nth-child(4), #weightContent > :nth-child(4), #progressContent > :nth-child(4), #mealsContent > :nth-child(4) { animation-delay: 165ms; }
+#exerciseContent > :nth-child(n+5), #weightContent > :nth-child(n+5), #progressContent > :nth-child(n+5), #mealsContent > :nth-child(n+5) { animation-delay: 210ms; }
+
 /* utility */
 .spacer-sm { height: 8px; }
 .spacer-md { height: 16px; }
@@ -1358,9 +1393,12 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 
   <!-- ============== TODAY ============== -->
   <section class="screen active" id="screen-today">
-    <div class="greeting">
-      <h1 class="display" id="todayGreet">Good morning, <em>—</em>.</h1>
-      <div class="greeting-sub" id="todaySub">—</div>
+    <div class="tod-hero tod-day" id="todHero">
+      <div class="orb"></div>
+      <div class="greeting">
+        <h1 class="display" id="todayGreet">Good morning, <em>—</em>.</h1>
+        <div class="greeting-sub" id="todaySub">—</div>
+      </div>
     </div>
 
     <div class="partner-ambient" id="partnerAmbient"></div>
@@ -2849,8 +2887,9 @@ function animateChangedNumbers() {
     if (isNaN(target)) return;
     const prev = _numCache[id];
     _numCache[id] = target;
-    if (prev === undefined || prev === target) return;
-    animateNumber(el, prev, target, 480);
+    if (prev === target) return;
+    // first appearance counts up from 0; later changes tween from the old value
+    animateNumber(el, prev === undefined ? 0 : prev, target, prev === undefined ? 700 : 480);
   });
 }
 function animateNumber(el, from, to, durationMs) {
@@ -2915,9 +2954,20 @@ async function markWorkoutDoneQuick(id) {
   renderAll();
 }
 
+function todPeriod() {
+  const h = new Date().getHours();
+  if (h < 8) return 'dawn';
+  if (h < 17) return 'day';
+  if (h < 20) return 'dusk';
+  return 'night';
+}
+
 function renderToday() {
   const m = activeMember();
   if (!m) return;
+
+  const todHero = document.getElementById('todHero');
+  if (todHero) todHero.className = 'tod-hero tod-' + todPeriod();
 
   const today = todayISO();
   const todayWorkouts = State.workouts
