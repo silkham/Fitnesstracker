@@ -1282,27 +1282,16 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 /* ============================================================
    D · TIME-OF-DAY HERO + entrance polish
 ============================================================ */
-.tod-hero {
+.hero-greet {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-lg);
-  padding: 20px 18px 18px;
+  padding: 20px 18px;
   margin-bottom: 14px;
-  min-height: 108px;
+  background: linear-gradient(135deg, rgba(43,240,156,0.12), rgba(43,139,255,0.05) 60%, transparent);
   border: 0.5px solid var(--glass-line);
 }
-.tod-hero .greeting { padding: 0; position: relative; z-index: 1; }
-.tod-hero .greeting .display { color: #fff; }
-.tod-hero .greeting-sub { color: rgba(255,255,255,0.72); }
-.tod-hero .orb { position: absolute; border-radius: 50%; z-index: 0; width: 96px; height: 96px; }
-.tod-dawn  { background: linear-gradient(135deg,#1b2440,#3a2b48 55%,#6a3a48); }
-.tod-dawn  .orb { background: radial-gradient(circle, #ffe2b0, #ff9e5e 48%, transparent 72%); right: 16px; bottom: -24px; }
-.tod-day   { background: linear-gradient(135deg,#0e2742,#184a66 55%,#1f6a72); }
-.tod-day   .orb { background: radial-gradient(circle, #fff6dd, #ffd166 46%, transparent 72%); right: 22px; top: -26px; }
-.tod-dusk  { background: linear-gradient(135deg,#1a1d3a,#43284a 50%,#7a3a33); }
-.tod-dusk  .orb { background: radial-gradient(circle, #ffd6a8, #ff7e57 46%, transparent 72%); right: 18px; bottom: -22px; }
-.tod-night { background: linear-gradient(135deg,#0a0f1f,#131a30 55%,#1b2444); }
-.tod-night .orb { width: 66px; height: 66px; background: radial-gradient(circle, #eef2ff, #aab8e0 46%, transparent 74%); right: 24px; top: -16px; }
+.hero-greet .greeting { padding: 0; }
 
 /* staggered card entrance on every screen's content */
 #exerciseContent > *, #weightContent > *, #progressContent > *, #mealsContent > *, #profileContent > * {
@@ -1393,9 +1382,9 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 
   <!-- ============== TODAY ============== -->
   <section class="screen active" id="screen-today">
-    <div class="tod-hero tod-day" id="todHero">
-      <div class="orb"></div>
+    <div class="hero-greet" id="todHero">
       <div class="greeting">
+        <div class="eyebrow" id="todayDate" style="margin-bottom:6px;"></div>
         <h1 class="display" id="todayGreet">Good morning, <em>—</em>.</h1>
         <div class="greeting-sub" id="todaySub">—</div>
       </div>
@@ -1564,7 +1553,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — bump on each deploy so the You page reflects the latest update.
-const APP_VERSION = 'Stride · v1.3 (build 14)';
+const APP_VERSION = 'Stride · v1.3 (build 15)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -2968,9 +2957,6 @@ function renderToday() {
   const m = activeMember();
   if (!m) return;
 
-  const todHero = document.getElementById('todHero');
-  if (todHero) todHero.className = 'tod-hero tod-' + todPeriod();
-
   const today = todayISO();
   const todayWorkouts = State.workouts
     .filter(w => w.member_id === m.id && w.planned_for === today && w.status !== 'cancelled')
@@ -2982,18 +2968,28 @@ function renderToday() {
     });
   const didMoveToday = todayWorkouts.some(w => w.status === 'done');
 
-  // Motivational, single-user greeting
+  // Greeting hero — motivational headline + how much you've lost
   const firstName = escapeHtml((m.display_name || '').split(' ')[0]);
+  const dateEl = document.getElementById('todayDate');
+  if (dateEl) dateEl.textContent = formatDateLong();
   document.getElementById('todayGreet').innerHTML = `${todayHeadline(didMoveToday)}, <em>${firstName}</em>`;
-  let subParts = [formatDateLong()];
-  if (m.life_goal_title && m.life_goal_date) {
-    const days = daysUntil(m.life_goal_date);
-    if (days != null && days >= 0) subParts.push(`${escapeHtml(m.life_goal_title)} · ${days} day${days===1?'':'s'}`);
-    else subParts.push(escapeHtml(m.life_goal_title));
+
+  const myW = State.weights.filter(w => w.member_id === m.id);
+  const latestV = myW[0] ? parseFloat(myW[0].weight_kg) : null;
+  const startW = m.weight_start_kg ? parseFloat(m.weight_start_kg) : (myW.length ? parseFloat(myW[myW.length - 1].weight_kg) : null);
+  const goalV = m.weight_goal_kg ? parseFloat(m.weight_goal_kg) : null;
+  let subHtml;
+  if (startW != null && latestV != null && (startW - latestV) > 0.05) {
+    const toGo = (goalV != null && latestV > goalV) ? ` <span class="pip"></span> ${(latestV - goalV).toFixed(1)} kg to go` : '';
+    subHtml = `<span style="color:var(--accent);font-weight:700;">▼ ${(startW - latestV).toFixed(1)} kg</span> down so far${toGo}`;
+  } else if (goalV != null && latestV != null && latestV > goalV) {
+    subHtml = `${(latestV - goalV).toFixed(1)} kg to your goal — let's go`;
   } else if (m.life_goal_title) {
-    subParts.push(escapeHtml(m.life_goal_title));
+    subHtml = escapeHtml(m.life_goal_title);
+  } else {
+    subHtml = `Log a weigh-in to start tracking your loss`;
   }
-  document.getElementById('todaySub').innerHTML = subParts.join(' <span class="pip"></span> ');
+  document.getElementById('todaySub').innerHTML = subHtml;
 
   // weight
   const myWeights = State.weights.filter(w => w.member_id === m.id);
