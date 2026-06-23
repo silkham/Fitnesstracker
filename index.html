@@ -1553,7 +1553,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v2.0 (build 1)';
+const APP_VERSION = 'Stride · v2.0 (build 2)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -3078,27 +3078,37 @@ function renderToday() {
     </div>`;
   }
 
-  // ---- Tonight's dinner (from the meal planner) ----
+  // ---- Today's meals — breakfast / lunch / dinner (dinner is the hero) ----
   {
-    const dinner = normMealSlot((State.weekPlan?.slots?.[today] || {}).dinner);
-    const hasDinner = dinner && (dinner.name || dinner.source || dinner.url);
-    html += `<div class="card tappable" onclick="openTonightDinner()">
-      <div class="card-row" style="margin-bottom:4px;">
-        <span class="eyebrow">Tonight's dinner</span>
-        ${hasDinner && dinner.url ? `<span class="meal-slot-link" onclick="event.stopPropagation();openMealUrl('${encodeURIComponent(dinner.url)}')">↗</span>` : ''}
-      </div>
-      <div class="wc-title" style="font-size:16px;">${hasDinner ? (dinner.name ? escapeHtml(dinner.name) : '(no name)') : 'Nothing planned'}</div>
-      <div class="wc-sub">${hasDinner && dinner.source ? escapeHtml(dinner.source) : (hasDinner ? '' : 'Tap to plan tonight')}</div>
+    const dayslots = State.weekPlan?.slots?.[today] || {};
+    const rows = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner']].map(([key, label]) => {
+      const mealObj = normMealSlot(dayslots[key]);
+      const filled = mealObj && (mealObj.name || mealObj.url || mealObj.source);
+      const right = (mealObj && mealObj.url)
+        ? `<span class="meal-slot-link" onclick="event.stopPropagation();openMealUrl('${encodeURIComponent(mealObj.url)}')">↗</span>`
+        : `<span class="meal-slot-add">${filled ? '' : '+'}</span>`;
+      const val = filled
+        ? `${mealObj.name ? escapeHtml(mealObj.name) : '<span style="color:var(--ink-4);">(no name)</span>'}${mealObj.source ? `<span class="src">${escapeHtml(mealObj.source)}</span>` : ''}`
+        : 'Tap to add';
+      return `<div class="meal-slot ${key}" onclick="openTodayMeal('${key}')">
+        <span class="meal-slot-label">${label}</span>
+        <span class="meal-slot-val ${filled ? '' : 'empty'}">${val}</span>
+        ${right}
+      </div>`;
+    }).join('');
+    html += `<div class="card" style="padding:14px 16px;">
+      <div class="card-row" style="margin-bottom:6px;"><span class="eyebrow">Today's meals</span></div>
+      ${rows}
     </div>`;
   }
 
   document.getElementById('todayContent').innerHTML = html;
 }
 
-// Open tonight's dinner editor, ensuring the meals tab is on the current week first.
-async function openTonightDinner() {
+// Open a meal editor for today, ensuring the meals tab is on the current week first.
+async function openTodayMeal(slot) {
   if (State.mealWeekStart !== State.weekStart) await loadMealWeek(State.weekStart);
-  openMealEditor(todayISO(), 'dinner');
+  openMealEditor(todayISO(), slot);
 }
 
 // Momentum framing for the weight card on the dashboard.
@@ -5503,7 +5513,7 @@ function renderMeals() {
   const slots = plan.slots || {};
   const today = todayISO();
   const days = Array.from({ length: 7 }, (_, i) => isoDateAddDays(weekStart, i));
-  const order = [['dinner', 'Dinner'], ['lunch', 'Lunch'], ['breakfast', 'Breakfast']];
+  const order = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner']];
 
   root.innerHTML = days.map(d => {
     const isToday = d === today;
