@@ -1553,7 +1553,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — bump on each deploy so the You page reflects the latest update.
-const APP_VERSION = 'Stride · v1.3 (build 15)';
+const APP_VERSION = 'Stride · v1.3 (build 16)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -3201,6 +3201,17 @@ function renderWeight() {
     ? `${myWeights.length} weigh-in${myWeights.length === 1 ? '' : 's'}${goalVal != null ? ` <span class="pip"></span> goal ${goalVal.toFixed(1)} kg` : ''}`
     : 'No weigh-ins yet';
 
+  // Empty state — no weigh-ins logged yet
+  if (!myWeights.length) {
+    document.getElementById('weightContent').innerHTML = `<div class="card-hero">${emptyState(
+      ico('<path d="M4 19h16M5 19l3-10h8l3 10M9 9V7a3 3 0 0 1 6 0v2"/>'),
+      'Step on the scale',
+      'Log your first weigh-in to start your trend — then your trajectory and progress kick in.',
+      `<button class="btn accent" onclick="openWeightEntry()">Log weight</button>`
+    )}</div>`;
+    return;
+  }
+
   let html = '';
 
   // Hero
@@ -3434,6 +3445,19 @@ function sessionIconTile(t, px) {
   const size = px || 46;
   const tint = sessionTint(t);
   return `<div style="width:${size}px;height:${size}px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${tint}22;color:${tint};">${sessionIcon(t, Math.round(size * 0.52))}</div>`;
+}
+
+// Reusable styled empty state: emerald icon tile + title + sub + optional action.
+function emptyState(iconSvg, title, sub, actionHtml) {
+  return `<div style="text-align:center;padding:34px 20px;">
+    <div style="width:54px;height:54px;border-radius:16px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;">${iconSvg}</div>
+    <div style="font-family:'Archivo','Archivo Expanded',sans-serif;font-weight:700;font-size:16px;color:var(--ink);">${title}</div>
+    ${sub ? `<div class="tiny" style="color:var(--ink-3);margin:4px auto 0;max-width:250px;line-height:1.5;">${sub}</div>` : ''}
+    ${actionHtml ? `<div style="margin-top:16px;">${actionHtml}</div>` : ''}
+  </div>`;
+}
+function ico(paths) {
+  return `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 }
 
 // "284 kcal · 131 bpm · 12.8 km" — intensity metrics synced from Apple Health
@@ -4366,6 +4390,13 @@ function renderExercise() {
           <div class="tiny" style="color:var(--ink-4);white-space:nowrap;">${formatHistoryDate(w.planned_for)}</div>
         </div>`;
       }).join('');
+    } else {
+      html += `<div class="section-head"><span class="t">Recent</span></div>`;
+      html += `<div class="card">${emptyState(
+        ico('<path d="M4 14h2l2-8 4 12 2-6h6"/>'),
+        'No sessions yet',
+        'Your Peloton &amp; Watch workouts will appear here once they sync — or tap a day above to log one.'
+      )}</div>`;
     }
   }
 
