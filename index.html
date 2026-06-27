@@ -1555,7 +1555,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v3.0 β (build 3)';
+const APP_VERSION = 'Stride · v3.0 β (build 4)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -2274,9 +2274,13 @@ function eventToWorkoutFields(ev) {
 // ============================================================
 let _lastAutoSync = 0;
 async function syncPelotonCalendars(showFeedback) {
+  // Concurrency guard: prevent overlapping runs from double-inserting (root cause of the Jul dupes)
+  if (State._pelotonSyncing) return { added: 0, cancelled: 0, errors: 0 };
+  State._pelotonSyncing = true;
   const members = State.members.filter(m => m.peloton_calendar_url);
   if (members.length === 0) {
     if (showFeedback) toast('No calendar URLs set — add in profile');
+    State._pelotonSyncing = false;
     return { added: 0, cancelled: 0, errors: 0 };
   }
 
@@ -2359,7 +2363,11 @@ async function syncPelotonCalendars(showFeedback) {
 
       // Apply writes
       if (inserts.length) {
-        const { data, error } = await State.client.from('workouts').insert(inserts).select();
+        // upsert + ignoreDuplicates: a racing sync (or re-import) can't create dupes —
+        // the unique index on (member_id, peloton_calendar_uid) makes this a no-op for known events
+        const { data, error } = await State.client.from('workouts')
+          .upsert(inserts, { onConflict: 'member_id,peloton_calendar_uid', ignoreDuplicates: true })
+          .select();
         if (error) { errors++; console.error('Insert error', error); }
         else if (data) { data.forEach(w => State.workouts.push(w)); totalAdded += data.length; }
       }
@@ -2398,6 +2406,7 @@ async function syncPelotonCalendars(showFeedback) {
   }
 
   renderAll();
+  State._pelotonSyncing = false;
   return { added: totalAdded, cancelled: totalCancelled, errors };
 }
 
