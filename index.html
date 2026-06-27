@@ -1554,7 +1554,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v3.0 β (build 1)';
+const APP_VERSION = 'Stride · v3.0 β (build 2)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -3133,17 +3133,15 @@ function renderToday() {
       <div class="wc-title">Nothing planned yet</div>
       <div class="wc-sub">Tap to add a session — or plan your week in Train</div>
     </div>`;
-  } else {
-    const w = todayWorkouts.find(x => x.status !== 'done') || todayWorkouts[0];
+  } else if (todayWorkouts.length === 1) {
+    const w = todayWorkouts[0];
     const disp = formatWorkoutDisplay(w);
     const done = w.status === 'done';
     const isPeloton = !!w.peloton_url;
-    const multi = todayWorkouts.length > 1;
-    const allDone = todayWorkouts.every(x => x.status === 'done');
     html += `<div class="card-hero workout-cta">
       <div class="card-row" style="margin-bottom:10px;">
-        <span class="eyebrow">Today${multi ? ` · ${todayWorkouts.length} sessions` : ''}</span>
-        ${allDone ? '<span class="badge done">All done</span>' : (done ? '<span class="badge done">Done</span>' : (isPeloton ? '<span class="badge">Peloton</span>' : ''))}
+        <span class="eyebrow">Today</span>
+        ${done ? '<span class="badge done">Done</span>' : (isPeloton ? '<span class="badge">Peloton</span>' : '')}
       </div>
       <div style="display:flex;gap:12px;align-items:center;" onclick="openTodayWorkout()">
         ${sessionIconTile(w.session_type)}
@@ -3153,11 +3151,35 @@ function renderToday() {
         </div>
       </div>
       <div class="btn-row">
-        ${allDone
-          ? `<button class="btn ghost block" onclick="openTodayWorkout()">View sessions</button>`
+        ${done
+          ? `<button class="btn ghost block" onclick="openTodayWorkout()">View</button>`
           : `<button class="btn accent block" onclick="event.stopPropagation();markWorkoutDoneQuick('${w.id}')">Mark done</button>`}
         ${isPeloton && !done ? `<button class="btn" style="flex:0 0 auto;" onclick="openPelotonUrl('${escapeHtml(w.peloton_url)}')">Open</button>` : ''}
       </div>
+    </div>`;
+  } else {
+    // multiple sessions today — list them all, each with its own "Done"
+    const allDone = todayWorkouts.every(x => x.status === 'done');
+    const totalMin = todayWorkouts.reduce((s, x) => s + (x.duration_min || 0), 0);
+    html += `<div class="card-hero workout-cta">
+      <div class="card-row" style="margin-bottom:8px;">
+        <span class="eyebrow">Today · ${todayWorkouts.length} sessions${totalMin ? ` · ${totalMin} min` : ''}</span>
+        ${allDone ? '<span class="badge done">All done</span>' : ''}
+      </div>
+      ${todayWorkouts.map((w, i) => {
+        const disp = formatWorkoutDisplay(w);
+        const done = w.status === 'done';
+        return `<div style="display:flex;align-items:center;gap:11px;padding:9px 0;${i > 0 ? 'border-top:0.5px solid var(--line);' : ''}">
+          ${sessionIconTile(w.session_type, 38)}
+          <div style="flex:1;min-width:0;cursor:pointer;${done ? 'opacity:0.6;' : ''}" onclick="openWorkoutById('${w.id}','${w.planned_for}')">
+            <div style="font-weight:600;color:var(--ink);font-size:14px;">${escapeHtml(disp.primary)}</div>
+            ${disp.secondary ? `<div class="tiny" style="color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(disp.secondary)}</div>` : ''}
+          </div>
+          ${done
+            ? '<span class="badge done" style="flex-shrink:0;">Done</span>'
+            : `<button class="btn accent" style="flex-shrink:0;padding:7px 13px;font-size:12px;" onclick="event.stopPropagation();markWorkoutDoneQuick('${w.id}')">Done</button>`}
+        </div>`;
+      }).join('')}
     </div>`;
   }
 
