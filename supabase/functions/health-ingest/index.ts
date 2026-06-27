@@ -129,23 +129,23 @@ Deno.serve(async (req) => {
       continue;
     }
 
-    // 2) match a planned session that day (closest start time; type as tiebreaker)
+    // 2) match a planned session that day — SAME MODALITY ONLY, so an unrelated
+    //    activity (e.g. a walk) never auto-completes a planned ride. Among same-type
+    //    candidates, pick the closest start time; if only one, take it.
     const cands = await restGet(`workouts?member_id=eq.${MEMBER_ID}&planned_for=eq.${planned_for}&status=eq.planned&health_uid=is.null&select=id,specific_time,session_type,duration_min`);
     let target: any = null;
     if (Array.isArray(cands) && cands.length) {
-      const startMin = startMinOf(start);
-      let best = -1;
-      for (const c of cands) {
-        const ct = hhmmToMin(c.specific_time);
-        if (ct != null && startMin != null) {
-          const dist = Math.abs(ct - startMin);
-          if (dist <= 90 && (best < 0 || dist < best)) { best = dist; target = c; }
+      const sameType = cands.filter((c: any) => c.session_type === type);
+      if (sameType.length === 1) {
+        target = sameType[0];
+      } else if (sameType.length > 1) {
+        const startMin = startMinOf(start);
+        let best = -1;
+        for (const c of sameType) {
+          const ct = hhmmToMin(c.specific_time);
+          const dist = (ct != null && startMin != null) ? Math.abs(ct - startMin) : 9999;
+          if (best < 0 || dist < best) { best = dist; target = c; }
         }
-      }
-      if (!target) {
-        const sameType = cands.filter((c: any) => c.session_type === type);
-        if (sameType.length === 1) target = sameType[0];
-        else if (cands.length === 1) target = cands[0];
       }
     }
 

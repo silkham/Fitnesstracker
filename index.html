@@ -558,6 +558,7 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
   letter-spacing: 0.01em;
 }
 .greeting-sub .pip { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin: 0 8px 2px; vertical-align: middle; }
+.pip-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 11px; border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--line); font-size: 13px; white-space: nowrap; }
 
 /* ============================================================
    WEEK STRIP / DOTS
@@ -1554,7 +1555,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v3.0 β (build 2)';
+const APP_VERSION = 'Stride · v3.0 β (build 3)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -2980,6 +2981,55 @@ function computeReadiness(memberId) {
   return { state: 'ready', score, status, guidance, cls, contributors: contrib.join(' · '), daysOfData: ms.length };
 }
 
+// Objective proof of progress for the plateau days: resting HR trending DOWN
+// + VO2max trending UP. RHR-first (near-daily); VO2max a bonus when present.
+// Returns {state:'none'} unless there's genuine improvement — it's a delight, not a scold.
+function computeFitnessTrend(memberId) {
+  const ms = State.healthMetrics
+    .filter(m => m.member_id === memberId)
+    .sort((a, b) => a.metric_date.localeCompare(b.metric_date)); // oldest→newest
+  if (!ms.length) return { state: 'none' };
+  const items = [];
+
+  // Resting HR: recent window mean vs older baseline (a drop = fitter/more efficient)
+  const rhr = ms.filter(m => m.resting_hr != null)
+    .map(m => parseFloat(m.resting_hr)).filter(v => !isNaN(v));
+  if (rhr.length >= 6) {
+    const recentN = Math.min(7, Math.floor(rhr.length / 2));
+    const recent = rhr.slice(rhr.length - recentN);
+    const older = rhr.slice(0, rhr.length - recentN);
+    const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+    const drop = mean(older) - mean(recent); // positive = improved
+    if (drop >= 1) items.push({ label: 'Resting HR', delta: `↓ ${drop >= 10 ? Math.round(drop) : drop.toFixed(1)} bpm` });
+  }
+
+  // VO2max: earliest vs latest reading (a rise = fitter). Sparse on Apple Watch, so lenient.
+  const vo2 = ms.filter(m => m.vo2max != null)
+    .map(m => parseFloat(m.vo2max)).filter(v => !isNaN(v));
+  if (vo2.length >= 2) {
+    const rise = vo2[vo2.length - 1] - vo2[0];
+    if (rise >= 0.5) items.push({ label: 'VO₂max', delta: `↑ ${rise.toFixed(1)}` });
+  }
+
+  if (!items.length) return { state: 'none' };
+  return { state: 'improving', items };
+}
+
+// One-tap "move to tomorrow" for a planned session you couldn't get to.
+async function rescheduleWorkout(id, days = 1) {
+  const w = State.workouts.find(x => x.id === id);
+  if (!w || w.status !== 'planned') return;
+  const newDate = isoDateAddDays(w.planned_for, days);
+  setSync('syncing', 'Saving');
+  const { data, error } = await State.client.from('workouts').update({ planned_for: newDate }).eq('id', id).select().single();
+  if (error) { toast('Reschedule failed'); setSync('offline', 'Error'); return; }
+  const idx = State.workouts.findIndex(x => x.id === id);
+  if (idx >= 0) State.workouts[idx] = data;
+  setSync('synced', 'Saved');
+  toast('Moved to tomorrow →');
+  renderAll();
+}
+
 // One-tap "mark done" from the dashboard, without opening the sheet.
 async function markWorkoutDoneQuick(id) {
   const w = State.workouts.find(x => x.id === id);
@@ -3112,6 +3162,24 @@ function renderToday() {
     </div>`;
   }
 
+  // ---- "You're getting fitter" — proof of progress for when the scale stalls ----
+  {
+    const ft = computeFitnessTrend(m.id);
+    if (ft.state === 'improving') {
+      const chips = ft.items.map(it =>
+        `<span class="pip-chip"><span style="color:var(--ink-3);">${it.label}</span> <b style="color:var(--accent);">${it.delta}</b></span>`
+      ).join('');
+      const sub = ft.items.length > 1
+        ? `Your heart's working easier and your engine's growing — real progress, even when the scale's quiet.`
+        : `Your heart's working easier — real progress, even when the scale's quiet.`;
+      html += `<div class="card-hero">
+        <div class="eyebrow" style="margin-bottom:8px;">You're getting fitter ✨</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">${chips}</div>
+        <div class="wc-sub">${sub}</div>
+      </div>`;
+    }
+  }
+
   // ---- Consistency tiles ----
   const bars = Array.from({ length: weekTarget }, (_, i) => `<span class="${i < weekDone ? 'on' : ''}"></span>`).join('');
   html += `<div class="stat-grid">
@@ -3155,6 +3223,7 @@ function renderToday() {
           ? `<button class="btn ghost block" onclick="openTodayWorkout()">View</button>`
           : `<button class="btn accent block" onclick="event.stopPropagation();markWorkoutDoneQuick('${w.id}')">Mark done</button>`}
         ${isPeloton && !done ? `<button class="btn" style="flex:0 0 auto;" onclick="openPelotonUrl('${escapeHtml(w.peloton_url)}')">Open</button>` : ''}
+        ${!done ? `<button class="btn" style="flex:0 0 auto;" onclick="event.stopPropagation();rescheduleWorkout('${w.id}')" title="Move to tomorrow">Tomorrow →</button>` : ''}
       </div>
     </div>`;
   } else {
@@ -3177,7 +3246,7 @@ function renderToday() {
           </div>
           ${done
             ? '<span class="badge done" style="flex-shrink:0;">Done</span>'
-            : `<button class="btn accent" style="flex-shrink:0;padding:7px 13px;font-size:12px;" onclick="event.stopPropagation();markWorkoutDoneQuick('${w.id}')">Done</button>`}
+            : `<button class="btn ghost" style="flex-shrink:0;padding:7px 10px;font-size:13px;" onclick="event.stopPropagation();rescheduleWorkout('${w.id}')" title="Move to tomorrow">→</button><button class="btn accent" style="flex-shrink:0;padding:7px 13px;font-size:12px;" onclick="event.stopPropagation();markWorkoutDoneQuick('${w.id}')">Done</button>`}
         </div>`;
       }).join('')}
     </div>`;
@@ -4473,7 +4542,7 @@ function renderExercise() {
             })() : ''}
             ${w.note ? `<div class="tiny" style="margin-top:6px;font-style:italic;">"${escapeHtml(w.note)}"</div>` : ''}
           </div>
-          ${w.peloton_url && w.status === 'planned' ? `<div style="margin-top:8px;"><button class="card-action" onclick="event.stopPropagation();openPelotonUrl('${escapeHtml(w.peloton_url)}')">Open Peloton</button></div>` : ''}
+          ${w.status === 'planned' ? `<div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;">${w.peloton_url ? `<button class="card-action" onclick="event.stopPropagation();openPelotonUrl('${escapeHtml(w.peloton_url)}')">Open Peloton</button>` : ''}<button class="card-action" onclick="event.stopPropagation();rescheduleWorkout('${w.id}')">Move to tomorrow →</button></div>` : ''}
         </div>`;
       });
 
