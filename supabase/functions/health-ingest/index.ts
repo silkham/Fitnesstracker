@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
   };
 
   // ---- completed workouts: match to planned, else insert ----
-  const counts = { matched: 0, inserted: 0, updated: 0, errors: 0 };
+  const counts = { matched: 0, inserted: 0, updated: 0, errors: 0, skipped_peloton: 0 };
   for (const w of workoutsRaw) {
     const start = w.start ?? w.startDate ?? w.date;
     const planned_for = dayOf(start);
@@ -129,13 +129,28 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // 1b) Peloton owns its own sessions. If a Peloton row already covers this
+    //     day + modality (a done row has no specific_time → always collides; a
+    //     planned reservation collides when within ~45 min of the AH start),
+    //     skip so Apple Health's mirror of the same ride can't duplicate it.
+    const pelo = await restGet(`workouts?member_id=eq.${MEMBER_ID}&planned_for=eq.${planned_for}&source=eq.peloton&session_type=eq.${type}&select=specific_time`);
+    if (Array.isArray(pelo) && pelo.length) {
+      const startMin = startMinOf(start);
+      const collides = pelo.some((p: any) => {
+        const ct = hhmmToMin(p.specific_time);
+        return (ct == null || startMin == null) ? true : Math.abs(ct - startMin) <= 45;
+      });
+      if (collides) { counts.skipped_peloton++; continue; }
+    }
+
     // 2) match a planned session that day — SAME MODALITY ONLY, so an unrelated
     //    activity (e.g. a walk) never auto-completes a planned ride. Among same-type
-    //    candidates, pick the closest start time; if only one, take it.
-    const cands = await restGet(`workouts?member_id=eq.${MEMBER_ID}&planned_for=eq.${planned_for}&status=eq.planned&health_uid=is.null&select=id,specific_time,session_type,duration_min`);
+    //    candidates, pick the closest start time; if only one, take it. Never touch
+    //    Peloton-sourced rows (Peloton owns its own planned↔done lifecycle).
+    const cands = await restGet(`workouts?member_id=eq.${MEMBER_ID}&planned_for=eq.${planned_for}&status=eq.planned&health_uid=is.null&select=id,specific_time,session_type,duration_min,source`);
     let target: any = null;
     if (Array.isArray(cands) && cands.length) {
-      const sameType = cands.filter((c: any) => c.session_type === type);
+      const sameType = cands.filter((c: any) => c.session_type === type && c.source !== "peloton");
       if (sameType.length === 1) {
         target = sameType[0];
       } else if (sameType.length > 1) {

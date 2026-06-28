@@ -1555,7 +1555,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v3.0 β (build 4)';
+const APP_VERSION = 'Stride · v3.1 β (build 5)';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -2410,12 +2410,66 @@ async function syncPelotonCalendars(showFeedback) {
   return { added: totalAdded, cancelled: totalCancelled, errors };
 }
 
+// ============================================================
+// PELOTON API SYNC (v3.1) — pulls planned + completed straight from
+// Peloton via the peloton-ingest Edge Function, then reloads workouts.
+// Replaces the old iCal sync (syncPelotonCalendars, now retired).
+// Auth uses the logged-in user's own Supabase JWT — no secret shipped.
+// ============================================================
+async function syncPeloton(showFeedback, force = false) {
+  if (State._pelotonSyncing) return;
+  State._pelotonSyncing = true;
+  if (showFeedback) setSync('syncing', force ? 'Force syncing' : 'Syncing');
+  try {
+    const cfg = getConfig();
+    const { data: { session } } = await State.client.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { if (showFeedback) toast('Sign in to sync'); return; }
+
+    const res = await fetch(`${cfg.url}/functions/v1/peloton-ingest`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, apikey: cfg.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+    });
+    if (!res.ok) {
+      if (showFeedback) { setSync('offline', 'Sync failed'); toast('Peloton sync failed'); }
+      console.error('peloton-ingest', res.status, await res.text());
+      return;
+    }
+    const out = await res.json();
+
+    // reload the workouts window so new/updated rows show immediately
+    const { data: wk } = await State.client.from('workouts').select('*')
+      .eq('household_id', State.householdId)
+      .gte('planned_for', isoDateAddDays(todayISO(), -90))
+      .lte('planned_for', isoDateAddDays(weekStartFor(new Date()), 41));
+    if (wk) State.workouts = wk;
+
+    if (showFeedback) {
+      setSync('synced', 'Synced');
+      const c = out.completed || {}, p = out.planned || {};
+      const bits = [];
+      if (c.inserted || c.upgraded) bits.push(`${(c.inserted || 0) + (c.upgraded || 0)} done`);
+      if (c.refreshed) bits.push(`${c.refreshed} refreshed`);
+      if (p.upserted) bits.push(`${p.upserted} planned`);
+      if (p.deleted) bits.push(`${p.deleted} removed`);
+      toast(bits.length ? bits.join(' · ') : 'Up to date');
+    }
+    renderAll();
+  } catch (e) {
+    console.error('syncPeloton', e);
+    if (showFeedback) { setSync('offline', 'Sync failed'); toast('Peloton sync failed'); }
+  } finally {
+    State._pelotonSyncing = false;
+  }
+}
+
 function autoSyncIfDue() {
   // Run at most once every 60 seconds, silently
   const now = Date.now();
   if (now - _lastAutoSync < 60_000) return;
   _lastAutoSync = now;
-  syncPelotonCalendars(false).catch(() => {});
+  syncPeloton(false).catch(() => {});
 }
 
 // ============================================================
@@ -4428,7 +4482,7 @@ function renderExercise() {
 
   // Action buttons — moved to top
   html += `<div style="display:flex;gap:8px;margin-bottom:8px;">
-    <button class="btn primary" style="flex:1;" onclick="syncPelotonCalendars(true)">Sync Peloton</button>
+    <button class="btn primary" style="flex:1;" onclick="syncPeloton(true, true)">Force API sync</button>
     <button class="btn accent" style="flex:1;" onclick="openMagicWeekExercise()">Plan week</button>
   </div>
   <div style="text-align:right;margin-bottom:8px;">
@@ -5950,7 +6004,7 @@ async function saveProxyUrl() {
   State.household.peloton_proxy_url = url;
   setSync('synced','Saved');
   toast(url ? 'Proxy URL saved' : 'Proxy URL cleared');
-  if (url) syncPelotonCalendars(true).catch(() => {});
+  if (url) syncPeloton(true).catch(() => {});
 }
 
 function applyTheme() {
@@ -6339,7 +6393,7 @@ async function saveMemberIntegrations(id) {
   };
   await saveMemberPayload(id, payload);
   if (payload.peloton_calendar_url) {
-    syncPelotonCalendars(false).catch(() => {});
+    syncPeloton(false).catch(() => {});
   }
   openMemberEditor(id);
 }
