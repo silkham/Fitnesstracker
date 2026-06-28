@@ -16,8 +16,15 @@
 // integration_tokens so steady-state runs skip the full login.
 // ============================================================
 
+// Browser button POSTs cross-origin from GitHub Pages → needs CORS + preflight.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-ingest-secret",
+};
+
 const json = (obj: unknown, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
+  new Response(JSON.stringify(obj), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 // ---- Peloton / Auth0 constants (validated) -----------------
 const AUTH_DOMAIN = "auth.onepeloton.com";
@@ -244,6 +251,7 @@ function extractMetrics(pg: any): Record<string, any> {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method === "GET") return json({ ok: true, service: "peloton-ingest" });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
