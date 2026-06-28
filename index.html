@@ -2135,287 +2135,12 @@ function formatWorkoutDisplay(w) {
 }
 
 // ============================================================
-// ICS PARSER (minimal, handles Google Calendar VEVENTs)
-// ============================================================
-function parseICS(text) {
-  // Returns array of events: { uid, dtstart_date, summary, description, url, status }
-  if (!text || typeof text !== 'string') return [];
-  // Unfold line continuations (lines starting with space/tab continue previous)
-  const unfolded = text.replace(/\r?\n[ \t]/g, '');
-  const lines = unfolded.split(/\r?\n/);
-  const events = [];
-  let cur = null;
-  for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') {
-      cur = {};
-    } else if (line === 'END:VEVENT') {
-      if (cur && cur.uid && cur.dtstart_date) events.push(cur);
-      cur = null;
-    } else if (cur) {
-      // Match KEY[;params]:VALUE
-      const m = line.match(/^([A-Z-]+)(;[^:]*)?:(.*)$/);
-      if (!m) continue;
-      const key = m[1];
-      const value = m[3];
-      if (key === 'UID') cur.uid = value;
-      else if (key === 'SUMMARY') cur.summary = unescapeICS(value);
-      else if (key === 'DESCRIPTION') cur.description = unescapeICS(value);
-      else if (key === 'URL') cur.url = value;
-      else if (key === 'STATUS') cur.status = value;
-      else if (key === 'DTSTART') {
-        // Either YYYYMMDD or YYYYMMDDTHHMMSSZ/local
-        const raw = value.replace(/[^0-9TZ]/g, '');
-        const ymd = raw.match(/^(\d{4})(\d{2})(\d{2})/);
-        if (ymd) cur.dtstart_date = `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
-        // Extract time if present
-        const hm = raw.match(/T(\d{2})(\d{2})/);
-        if (hm) {
-          const isUtc = /Z$/.test(raw);
-          // Convert UTC to local hour if needed
-          let hour = parseInt(hm[1], 10);
-          let minute = parseInt(hm[2], 10);
-          if (isUtc) {
-            const ymdParts = ymd ? [parseInt(ymd[1],10), parseInt(ymd[2],10)-1, parseInt(ymd[3],10)] : null;
-            if (ymdParts) {
-              const utcDate = new Date(Date.UTC(ymdParts[0], ymdParts[1], ymdParts[2], hour, minute));
-              hour = utcDate.getHours();
-              minute = utcDate.getMinutes();
-              // Local date might differ from UTC date
-              const localYmd = `${utcDate.getFullYear()}-${String(utcDate.getMonth()+1).padStart(2,'0')}-${String(utcDate.getDate()).padStart(2,'0')}`;
-              cur.dtstart_date = localYmd;
-            }
-          }
-          cur.specific_time = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
-          // Map hour to time-of-day chip
-          if (hour < 5) cur.time_of_day = 'late';
-          else if (hour < 8) cur.time_of_day = 'early';
-          else if (hour < 11) cur.time_of_day = 'morning';
-          else if (hour < 14) cur.time_of_day = 'midday';
-          else if (hour < 17) cur.time_of_day = 'afternoon';
-          else if (hour < 20) cur.time_of_day = 'evening';
-          else cur.time_of_day = 'late';
-        }
-      }
-    }
-  }
-  return events;
-}
-
-function unescapeICS(s) {
-  return s.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
-}
-
-function eventToWorkoutFields(ev) {
-  // Try to extract workout type, instructor, class_title, peloton_url, duration
-  const summary = ev.summary || '';
-  const description = ev.description || '';
-  const haystack = `${summary} ${description}`;
-
-  // Peloton URL
-  let peloton_url = null;
-  const urlMatch = haystack.match(/https?:\/\/[^\s,;]+(onepeloton|pelotoncycle)[^\s,;]*/i);
-  if (urlMatch) peloton_url = urlMatch[0].replace(/[.,;]$/, '');
-  if (!peloton_url && ev.url && /onepeloton|pelotoncycle/i.test(ev.url)) peloton_url = ev.url;
-
-  // Class id from URL (use existing parser)
-  let peloton_class_id = null;
-  let workout_type_from_url = null;
-  let title_from_url = null;
-  if (peloton_url) {
-    const p = parsePelotonUrl(peloton_url);
-    if (p) {
-      peloton_class_id = p.class_id;
-      workout_type_from_url = p.workout_type;
-      title_from_url = p.class_title;
-    }
-  }
-
-  // Duration: typical patterns "30 min", "30-minute", "45 minute"
-  let duration_min = null;
-  const durMatch = haystack.match(/(\d{1,3})[\s-]*(?:min|minute)/i);
-  if (durMatch) duration_min = parseInt(durMatch[1], 10);
-
-  // Workout type: from summary keywords or URL
-  const session_type = detectWorkoutType(haystack) || workout_type_from_url || 'ride';
-
-  // Instructor & title parsing from summary
-  // Common Peloton calendar format: "30 min Pop Ride with Bradley Rose"
-  let instructor = null;
-  let class_title = null;
-  const withMatch = summary.match(/^(.*?)\s+with\s+(.+?)$/i);
-  if (withMatch) {
-    class_title = withMatch[1].trim();
-    instructor = withMatch[2].trim();
-  } else if (title_from_url) {
-    class_title = title_from_url;
-  } else if (summary) {
-    class_title = summary;
-  }
-
-  // Strip leading duration from title since we store it separately
-  if (class_title) {
-    class_title = class_title.replace(/^\d{1,3}[\s-]*(?:min|minute)s?\s+/i, '').trim();
-  }
-
-  return {
-    session_type,
-    duration_min,
-    instructor,
-    class_title,
-    peloton_url,
-    peloton_class_id,
-    time_of_day: ev.time_of_day || null,
-    specific_time: ev.specific_time || null,
-  };
-}
-
-// ============================================================
-// PELOTON CALENDAR SYNC
-// ============================================================
-let _lastAutoSync = 0;
-async function syncPelotonCalendars(showFeedback) {
-  // Concurrency guard: prevent overlapping runs from double-inserting (root cause of the Jul dupes)
-  if (State._pelotonSyncing) return { added: 0, cancelled: 0, errors: 0 };
-  State._pelotonSyncing = true;
-  const members = State.members.filter(m => m.peloton_calendar_url);
-  if (members.length === 0) {
-    if (showFeedback) toast('No calendar URLs set — add in profile');
-    State._pelotonSyncing = false;
-    return { added: 0, cancelled: 0, errors: 0 };
-  }
-
-  if (showFeedback) setSync('syncing', 'Syncing');
-
-  const today = todayISO();
-  const horizon = isoDateAddDays(today, 21);
-  let totalAdded = 0;
-  let totalCancelled = 0;
-  let errors = 0;
-
-  for (const member of members) {
-    try {
-      // Route through Cloudflare Worker (CORS proxy) if configured, otherwise direct (will likely fail on Google Calendar)
-      const proxyUrl = State.household?.peloton_proxy_url;
-      const fetchUrl = proxyUrl
-        ? `${proxyUrl}?url=${encodeURIComponent(member.peloton_calendar_url)}`
-        : member.peloton_calendar_url;
-      const res = await fetch(fetchUrl, { cache: 'no-store' });
-      if (!res.ok) { errors++; continue; }
-      const text = await res.text();
-      const events = parseICS(text)
-        .filter(ev => ev.dtstart_date >= today && ev.dtstart_date <= horizon);
-
-      // Reconcile per member
-      const existingByUid = {};
-      State.workouts
-        .filter(w => w.member_id === member.id && w.peloton_calendar_uid)
-        .forEach(w => { existingByUid[w.peloton_calendar_uid] = w; });
-
-      const seenUids = new Set();
-      const inserts = [];
-      const updates = [];
-
-      for (const ev of events) {
-        seenUids.add(ev.uid);
-        const fields = eventToWorkoutFields(ev);
-
-        // Treat CANCELLED status as a cancellation
-        const isCancelled = (ev.status || '').toUpperCase() === 'CANCELLED';
-
-        const existing = existingByUid[ev.uid];
-        if (existing) {
-          // Only update if planned (don't touch done/cancelled workouts you've already handled)
-          if (existing.status === 'planned' || existing.status === 'cancelled') {
-            const desiredStatus = isCancelled ? 'cancelled' : 'planned';
-            if (existing.status !== desiredStatus
-                || existing.planned_for !== ev.dtstart_date
-                || existing.duration_min !== fields.duration_min
-                || existing.class_title !== fields.class_title) {
-              updates.push({
-                id: existing.id,
-                payload: {
-                  planned_for: ev.dtstart_date,
-                  status: desiredStatus,
-                  ...fields,
-                },
-              });
-            }
-          }
-        } else if (!isCancelled) {
-          inserts.push({
-            household_id: State.householdId,
-            member_id: member.id,
-            planned_for: ev.dtstart_date,
-            status: 'planned',
-            peloton_calendar_uid: ev.uid,
-            ...fields,
-          });
-        }
-      }
-
-      // Detect locally-tracked events that vanished from the feed → mark cancelled
-      const cancellations = [];
-      for (const [uid, w] of Object.entries(existingByUid)) {
-        if (!seenUids.has(uid) && w.status === 'planned') {
-          cancellations.push(w.id);
-        }
-      }
-
-      // Apply writes
-      if (inserts.length) {
-        // upsert + ignoreDuplicates: a racing sync (or re-import) can't create dupes —
-        // the unique index on (member_id, peloton_calendar_uid) makes this a no-op for known events
-        const { data, error } = await State.client.from('workouts')
-          .upsert(inserts, { onConflict: 'member_id,peloton_calendar_uid', ignoreDuplicates: true })
-          .select();
-        if (error) { errors++; console.error('Insert error', error); }
-        else if (data) { data.forEach(w => State.workouts.push(w)); totalAdded += data.length; }
-      }
-      for (const u of updates) {
-        const { data, error } = await State.client.from('workouts').update(u.payload).eq('id', u.id).select().single();
-        if (!error && data) {
-          const idx = State.workouts.findIndex(w => w.id === data.id);
-          if (idx >= 0) State.workouts[idx] = data;
-        } else if (error) errors++;
-      }
-      if (cancellations.length) {
-        const { error } = await State.client.from('workouts').update({ status: 'cancelled' }).in('id', cancellations);
-        if (!error) {
-          State.workouts.forEach(w => { if (cancellations.includes(w.id)) w.status = 'cancelled'; });
-          totalCancelled += cancellations.length;
-        } else errors++;
-      }
-    } catch (e) {
-      console.error('Sync error for member', member.display_name, e);
-      errors++;
-    }
-  }
-
-  if (showFeedback) {
-    if (errors > 0 && totalAdded === 0 && totalCancelled === 0) {
-      setSync('offline', 'Sync failed');
-      toast('Sync failed — check calendar URL');
-    } else {
-      setSync('synced', 'Synced');
-      const bits = [];
-      if (totalAdded) bits.push(`${totalAdded} added`);
-      if (totalCancelled) bits.push(`${totalCancelled} cancelled`);
-      if (bits.length === 0) bits.push('up to date');
-      toast(bits.join(' · '));
-    }
-  }
-
-  renderAll();
-  State._pelotonSyncing = false;
-  return { added: totalAdded, cancelled: totalCancelled, errors };
-}
-
-// ============================================================
 // PELOTON API SYNC (v3.1) — pulls planned + completed straight from
 // Peloton via the peloton-ingest Edge Function, then reloads workouts.
-// Replaces the old iCal sync (syncPelotonCalendars, now retired).
 // Auth uses the logged-in user's own Supabase JWT — no secret shipped.
 // ============================================================
+let _lastAutoSync = 0;  // throttle for autoSyncIfDue (≤1 run / 60s)
+
 async function syncPeloton(showFeedback, force = false) {
   if (State._pelotonSyncing) return;
   State._pelotonSyncing = true;
@@ -4149,7 +3874,7 @@ async function clearExerciseWeek(linkEl) {
       w.member_id === m.id &&
       weekDays.includes(w.planned_for) &&
       w.status === 'planned' &&
-      !w.peloton_calendar_uid  // never delete Peloton-synced sessions
+      !w.peloton_calendar_uid && w.source !== 'peloton'  // never delete Peloton-synced sessions
     );
     if (toDelete.length === 0) {
       toast('Nothing to clear');
@@ -5930,7 +5655,6 @@ function renderProfile() {
 
   // ============== SETTINGS — collapsible ==============
   const s = State.settings || {};
-  const proxyUrl = State.household?.peloton_proxy_url || '';
   html += `<details class="card" style="margin-top:14px;">
     <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
       <span class="eyebrow">Settings</span>
@@ -5963,13 +5687,7 @@ function renderProfile() {
       <span style="color:var(--ink-4);font-size:14px;">›</span>
     </summary>
     <div style="margin-top:14px;">
-      <div class="field">
-        <label class="field-label">Peloton sync proxy URL</label>
-        <input class="input" id="proxyUrlInput" placeholder="https://household-proxy.YOUR-NAME.workers.dev" value="${escapeHtml(proxyUrl)}">
-        <div class="tiny" style="margin-top:6px;color:var(--ink-3);">Cloudflare Worker URL that fetches your Google Calendar (Google blocks direct browser fetches).</div>
-        <button class="btn ghost block" style="margin-top:8px;" onclick="saveProxyUrl()">Save proxy URL</button>
-      </div>
-      <div style="margin-top:14px;">
+      <div>
         <button class="btn ghost block" onclick="exportAll()">Export everything</button>
       </div>
     </div>
@@ -5987,24 +5705,6 @@ function copyJoinCode(code) {
   } else {
     toast(code);
   }
-}
-
-async function saveProxyUrl() {
-  const input = document.getElementById('proxyUrlInput');
-  if (!input) return;
-  let url = input.value.trim();
-  if (url && !/^https?:\/\//i.test(url)) {
-    url = 'https://' + url;
-  }
-  url = url.replace(/\/$/, '') || null;
-  setSync('syncing', 'Saving');
-  const { error } = await State.client.from('households').update({ peloton_proxy_url: url }).eq('id', State.householdId);
-  if (error) { toast('Save failed'); setSync('offline','Error'); return; }
-  if (!State.household) State.household = {};
-  State.household.peloton_proxy_url = url;
-  setSync('synced','Saved');
-  toast(url ? 'Proxy URL saved' : 'Proxy URL cleared');
-  if (url) syncPeloton(true).catch(() => {});
 }
 
 function applyTheme() {
@@ -6099,7 +5799,6 @@ function openMemberEditor(memberId) {
     return ({ lose_weight:'Lose weight', event:'Train for event', general:'General fitness', strength:'Build strength', maintain:'Maintain' })[m.goal_type || 'general'];
   })();
   const programLbl = m.current_program === 'c25k' ? `NHS C25K · week ${m.current_program_week||1}` : 'None';
-  const calStatus = m.peloton_calendar_url ? 'Connected' : 'Not connected';
 
   const html = `
     <div style="display:flex;flex-direction:column;gap:10px;">
@@ -6134,7 +5833,6 @@ function openMemberEditor(memberId) {
         <div class="card-eyebrow"><span class="eyebrow">Integrations</span></div>
         <div style="margin-top:6px;">
           ${summary('Program', programLbl)}
-          ${summary('Peloton calendar', calStatus)}
         </div>
       </button>
     </div>
@@ -6367,12 +6065,6 @@ function openMemberEditorIntegrations(memberId) {
       </div>
     </div>
 
-    <div class="field">
-      <label class="field-label">Peloton calendar URL</label>
-      <input class="input" id="mCalUrl" placeholder="https://calendar.google.com/calendar/ical/..." value="${escapeHtml(m.peloton_calendar_url || '')}">
-      <div class="tiny" style="margin-top:6px;color:var(--ink-3);">From Google Calendar settings → "Secret address in iCal format". Enrolled classes auto-import here.</div>
-    </div>
-
     <div class="btn-row" style="margin-top:18px;">
       <button class="btn primary block" onclick="saveMemberIntegrations('${memberId}')">Save</button>
     </div>
@@ -6389,12 +6081,8 @@ async function saveMemberIntegrations(id) {
     current_program: progId || null,
     current_program_week: progId === 'c25k' ? Math.min(Math.max(progWeek || 1, 1), 9) : null,
     program_runs_this_week: progId === 'c25k' ? Math.min(Math.max(progRuns || 0, 0), 3) : null,
-    peloton_calendar_url: document.getElementById('mCalUrl').value.trim() || null,
   };
   await saveMemberPayload(id, payload);
-  if (payload.peloton_calendar_url) {
-    syncPeloton(false).catch(() => {});
-  }
   openMemberEditor(id);
 }
 
