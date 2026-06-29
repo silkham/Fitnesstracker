@@ -294,10 +294,21 @@ Deno.serve(async (req) => {
     return { ok: r.ok, status: r.status, err: r.ok ? null : await r.text() };
   };
 
+  // ---- API-health heartbeat (layer 1) -----------------------
+  // Stamp the attempt, capture the prior fail streak, then run the whole sync
+  // inside one try so ANY uncaught throw (auth/endpoint death) is recorded.
+  const writeHealth = (fields: Record<string, unknown>) =>
+    restWrite("POST", `integration_tokens?on_conflict=member_id,provider`,
+      [{ household_id: HOUSEHOLD_ID, member_id: MEMBER_ID, provider: "peloton", ...fields }]);
+  const tokRows = await restGet(`integration_tokens?member_id=eq.${MEMBER_ID}&provider=eq.peloton&select=refresh_token,fail_count&limit=1`);
+  const tok0 = Array.isArray(tokRows) && tokRows[0] ? tokRows[0] : null;
+  const storedRefresh = tok0?.refresh_token || null;
+  const prevFail = Number(tok0?.fail_count) || 0;
+  await writeHealth({ last_attempt_at: new Date().toISOString() });
+
+  try {
   // ---- AUTH: refresh first, else full login -----------------
   let access = "", refresh: string | null = null;
-  const tokRows = await restGet(`integration_tokens?member_id=eq.${MEMBER_ID}&provider=eq.peloton&select=refresh_token&limit=1`);
-  const storedRefresh = Array.isArray(tokRows) && tokRows[0]?.refresh_token ? tokRows[0].refresh_token : null;
   try {
     if (storedRefresh) {
       const t = await tokenExchange({ grant_type: "refresh_token", client_id: CLIENT_ID, refresh_token: storedRefresh });
@@ -421,5 +432,11 @@ Deno.serve(async (req) => {
     r.ok ? (planned.deleted = staleIds.length) : (planned.errors++, console.error("delete stale", r.err));
   }
 
+  await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
   return json({ ok: true, user: me.username, completed, planned });
+  } catch (e) {
+    await writeHealth({ last_error: String(e).slice(0, 500), fail_count: prevFail + 1 });
+    console.error("peloton-ingest fatal", String(e));
+    return json({ ok: false, error: String(e).slice(0, 300) }, 500);
+  }
 });

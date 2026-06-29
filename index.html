@@ -1555,7 +1555,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.0';
+const APP_VERSION = 'Stride · v4.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -1863,6 +1863,9 @@ async function loadAll() {
         .order('metric_date', { ascending: true });
       State.healthMetrics = hmErr ? [] : (hm || []);
     } catch (e) { State.healthMetrics = []; }
+
+    // load Peloton API-health heartbeat (single row, safe cols only). Resilient.
+    await loadPelotonHealth();
 
     // load ingredients
     if (State.recipes.length) {
@@ -2186,7 +2189,43 @@ async function syncPeloton(showFeedback, force = false) {
     if (showFeedback) { setSync('offline', 'Sync failed'); toast('Peloton sync failed'); }
   } finally {
     State._pelotonSyncing = false;
+    loadPelotonHealth().then(renderAll).catch(() => {});
   }
+}
+
+// ---- API-health (layer 1): read the heartbeat the function writes ----------
+async function loadPelotonHealth() {
+  try {
+    const { data } = await State.client.rpc('peloton_health');
+    State.pelotonHealth = (data && data[0]) || null;
+  } catch (e) { State.pelotonHealth = null; }
+}
+function pelAgo(ms) {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 90) return 'just now';
+  const m = Math.floor(s / 60); if (m < 90) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 36) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+// Status line under the Sync button. 🟢 healthy / 🟡 stale (dead cron) / 🔴 failing.
+function pelotonHealthLine() {
+  const h = State.pelotonHealth;
+  if (!h) return '';
+  const succ = h.last_success_at ? new Date(h.last_success_at).getTime() : 0;
+  const attempt = h.last_attempt_at ? new Date(h.last_attempt_at).getTime() : 0;
+  const failing = (h.fail_count || 0) > 0 && attempt >= succ;
+  let color, label;
+  if (failing) { color = 'var(--bramble)'; label = `Sync failing (${h.fail_count}×) · tap for detail`; }
+  else if (!succ || Date.now() - succ > 12 * 3600 * 1000) { color = 'var(--rust)'; label = succ ? `Sync stale · last ok ${pelAgo(succ)}` : 'Never synced'; }
+  else { color = 'var(--moss)'; label = `API healthy · synced ${pelAgo(succ)}`; }
+  return `<div class="tiny" onclick="showPelotonHealth()" style="display:flex;align-items:center;gap:6px;padding:0 2px 8px;color:var(--ink-4);cursor:pointer;">
+    <span style="width:6px;height:6px;border-radius:50%;background:${color};display:inline-block;flex:none;"></span>${escapeHtml(label)}</div>`;
+}
+function showPelotonHealth() {
+  const h = State.pelotonHealth;
+  if (!h) { toast('No sync info yet'); return; }
+  if (h.last_error && (h.fail_count || 0) > 0) toast('Last error: ' + h.last_error);
+  else toast(h.last_success_at ? ('Last synced ' + pelAgo(new Date(h.last_success_at).getTime())) : 'Never synced');
 }
 
 function autoSyncIfDue() {
@@ -4207,10 +4246,11 @@ function renderExercise() {
 
   // Action buttons — moved to top
   html += `<div style="display:flex;gap:8px;margin-bottom:8px;">
-    <button class="btn primary" style="flex:1;" onclick="syncPeloton(true, true)">Force API sync</button>
+    <button class="btn primary" style="flex:1;" onclick="syncPeloton(true, false)">Sync Peloton</button>
     <button class="btn accent" style="flex:1;" onclick="openMagicWeekExercise()">Plan week</button>
-  </div>
-  <div style="text-align:right;margin-bottom:8px;">
+  </div>`;
+  html += pelotonHealthLine();
+  html += `<div style="text-align:right;margin-bottom:8px;">
     <a href="#" id="clearExerciseLink" onclick="event.preventDefault();clearExerciseWeek(this);" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Clear week</a>
   </div>`;
 
@@ -5689,6 +5729,8 @@ function renderProfile() {
     <div style="margin-top:14px;">
       <div>
         <button class="btn ghost block" onclick="exportAll()">Export everything</button>
+        <button class="btn ghost block" style="margin-top:8px;" onclick="syncPeloton(true, true)">Full API re-sync</button>
+        <div class="tiny" style="color:var(--ink-4);margin-top:6px;">Re-fetches metrics for every recent workout. Slow — only needed after a data fix.</div>
       </div>
     </div>
   </details>`;
