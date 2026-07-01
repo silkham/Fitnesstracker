@@ -120,7 +120,10 @@ function parseHiddenForm(body: string): { action: string | null; fields: Record<
 }
 
 // ---- full Auth0 PKCE password login ------------------------
-async function passwordLogin(email: string, password: string): Promise<{ access: string; refresh: string | null; expires: number }> {
+// Returns the access/refresh tokens AND the cookie jar accumulated across the
+// whole Auth0 → callback flow (some Peloton services want the web session
+// cookie, not just the Bearer).
+async function passwordLogin(email: string, password: string): Promise<{ access: string; refresh: string | null; expires: number; jar: Jar }> {
   const jar: Jar = new Map();
   const verifier = randStr(64);
   const challenge = await sha256b64url(verifier);
@@ -174,7 +177,7 @@ async function passwordLogin(email: string, password: string): Promise<{ access:
 
   // STEP 4: exchange code for tokens
   const tok = await tokenExchange({ grant_type: "authorization_code", client_id: CLIENT_ID, code_verifier: verifier, code, redirect_uri: REDIRECT_URI });
-  return tok;
+  return { ...tok, jar };
 }
 
 async function tokenExchange(payload: Record<string, string>): Promise<{ access: string; refresh: string | null; expires: number }> {
@@ -328,19 +331,23 @@ Deno.serve(async (req) => {
 
   try {
   // ---- AUTH: refresh first, else full login -----------------
+  // loginJar holds the web session cookies, but ONLY when a full password login
+  // ran (the refresh_token path issues no cookies). The program branch forces a
+  // full login when it needs the jar.
   let access = "", refresh: string | null = null;
+  let loginJar: Jar | null = null;
   try {
     if (storedRefresh) {
       const t = await tokenExchange({ grant_type: "refresh_token", client_id: CLIENT_ID, refresh_token: storedRefresh });
       access = t.access; refresh = t.refresh ?? storedRefresh;
     } else {
       const t = await passwordLogin(EMAIL, PASSWORD);
-      access = t.access; refresh = t.refresh;
+      access = t.access; refresh = t.refresh; loginJar = t.jar;
     }
   } catch (_e) {
     // refresh failed/expired → full login fallback
     const t = await passwordLogin(EMAIL, PASSWORD);
-    access = t.access; refresh = t.refresh;
+    access = t.access; refresh = t.refresh; loginJar = t.jar;
   }
 
   // ---- identify user + persist tokens -----------------------
@@ -367,20 +374,106 @@ Deno.serve(async (req) => {
   // ============================================================
   if (typeof reqBody?.program === "string" && reqBody.program) {
     const GQL = "https://gql-graphql-gateway.prod.k8s.onepeloton.com/graphql";
-    const query = `query($ids:[String!]!){ programsById(programIds:$ids){ classes{ pelotonClassId } } }`;
-    const gr = await fetch(GQL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json", Accept: "application/json", "Peloton-Platform": "web", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: { ids: [reqBody.program] } }),
-    });
-    const gj = await gr.json().catch(() => ({}));
+    const debug = reqBody?.debug === true;
     const decode = (pcid: string): string | null => {
       try { const j = JSON.parse(atob(pcid)); return j.ride_id ?? j.rideId ?? j.id ?? null; } catch { return null; }
     };
-    const raw = gj?.data?.programsById?.[0]?.classes ?? [];
-    const classes = raw.map((c: any, i: number) => ({ n: i + 1, pelotonClassId: c.pelotonClassId, ride_id: decode(c.pelotonClassId) }));
+
+    // Force a full password login so we have the web session cookie jar (the
+    // refresh path issues none). Merge over whatever we already captured.
+    if (!loginJar || loginJar.size === 0) {
+      try { const t = await passwordLogin(EMAIL, PASSWORD); access = t.access; refresh = t.refresh; loginJar = t.jar; } catch (_e) { /* keep Bearer-only */ }
+    }
+    const cookieHdr = loginJar ? jarHeader(loginJar) : "";
+    const cookieNames = loginJar ? [...loginJar.keys()] : [];
+
+    const query = `query($ids:[String!]!){ programsById(programIds:$ids){ classes{ pelotonClassId } } }`;
+    const body = JSON.stringify({ query, variables: { ids: [reqBody.program] } });
+    // Mimic the web app as closely as we can: Origin/Referer + rich client hints.
+    const baseHeaders: Record<string, string> = {
+      Authorization: `Bearer ${access}`, "Content-Type": "application/json", Accept: "application/json",
+      "User-Agent": UA, Origin: "https://members.onepeloton.com", Referer: "https://members.onepeloton.com/",
+      "Peloton-Platform": "web", "Peloton-Client-Name": "onepeloton-web",
+    };
+
+    // Two attempts: Bearer-only, then Bearer + session cookie. Report both when
+    // debugging so we can see exactly what the gateway objects to.
+    const attempt = async (label: string, withCookie: boolean) => {
+      const headers = { ...baseHeaders };
+      if (withCookie && cookieHdr) headers["Cookie"] = cookieHdr;
+      const r = await fetch(GQL, { method: "POST", headers, body });
+      const text = await r.text();
+      let jsn: any = null; try { jsn = JSON.parse(text); } catch { /* non-JSON (HTML error page) */ }
+      const raw = jsn?.data?.programsById?.[0]?.classes ?? [];
+      const classes = raw.map((c: any, i: number) => ({ n: i + 1, pelotonClassId: c.pelotonClassId, ride_id: decode(c.pelotonClassId) }));
+      return {
+        label, status: r.status, ok: r.ok && !jsn?.errors && classes.length > 0,
+        errors: jsn?.errors ?? null, count: classes.length, classes,
+        respHeaders: debug ? Object.fromEntries([...r.headers.entries()]) : undefined,
+        bodySnippet: debug ? text.slice(0, 800) : undefined,
+      };
+    };
+
+    // Optional per-request header overrides (to mimic the iOS app now that
+    // Programs is mobile-only). reqBody.headers merges over the web defaults;
+    // a null/"" value DELETES that header (e.g. drop browser Origin/Referer).
+    const applyOverrides = (h: Record<string, string>) => {
+      const ov = reqBody?.headers;
+      if (ov && typeof ov === "object") {
+        for (const [k, v] of Object.entries(ov)) { if (v == null || v === "") delete h[k]; else h[k] = String(v); }
+      }
+      return h;
+    };
+
+    // REPL / probe: run an arbitrary GraphQL doc so we can map the schema and
+    // isolate which resolver 503s without redeploying. Returns raw status/body.
+    const runGql = async (label: string, doc: string, variables: Record<string, unknown> = {}) => {
+      const headers: Record<string, string> = { ...baseHeaders };
+      if (cookieHdr) headers["Cookie"] = cookieHdr;
+      applyOverrides(headers); // overrides win, incl. deleting Cookie/Origin/Referer
+      const r = await fetch(GQL, { method: "POST", headers, body: JSON.stringify({ query: doc, variables }) });
+      const text = await r.text();
+      let jsn: any = null; try { jsn = JSON.parse(text); } catch { /* HTML */ }
+      return { label, status: r.status, errors: jsn?.errors ?? null, data: jsn?.data ?? null, bodySnippet: jsn ? undefined : text.slice(0, 400) };
+    };
+
+    // Raw one-off query passthrough: POST { program:"<uuid>", gql:"query{...}" }.
+    if (typeof reqBody?.gql === "string" && reqBody.gql) {
+      const out = await runGql("raw", reqBody.gql, reqBody.variables ?? { id: reqBody.program, ids: [reqBody.program] });
+      await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
+      return json({ ok: !out.errors, ...out });
+    }
+
+    // Probe battery: isolate whether the whole program service is down for us or
+    // only the classes resolver, and coax field names out of Apollo suggestions.
+    if (reqBody?.probe === true) {
+      const P = reqBody.program;
+      const battery: Array<[string, string, Record<string, unknown>?]> = [
+        ["program.id",             `query($id:String!){ program(programId:$id){ id } }`, { id: P }],
+        ["program.title",          `query($id:String!){ program(programId:$id){ title } }`, { id: P }],
+        ["program.classes",        `query($id:String!){ program(programId:$id){ classes{ pelotonClassId } } }`, { id: P }],
+        ["program.__bogus",        `query($id:String!){ program(programId:$id){ zzzNope } }`, { id: P }],
+        ["programsById.id",        `query($ids:[String!]!){ programsById(programIds:$ids){ id } }`, { ids: [P] }],
+        ["programV2.__typename",   `query($id:String!){ programV2(programId:$id){ __typename } }`, { id: P }],
+        ["programV2.__bogus",      `query($id:String!){ programV2(programId:$id){ zzzNope } }`, { id: P }],
+        ["programV2.noselect",     `query($id:String!){ programV2(programId:$id) }`, { id: P }],
+      ];
+      const results = [];
+      for (const [label, doc, vars] of battery) results.push(await runGql(label, doc, vars ?? {}));
+      await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
+      return json({ ok: true, probe: true, cookieNames, results });
+    }
+
+    const a1 = await attempt("bearer-only", false);
+    const a2 = (a1.ok || !cookieHdr) ? null : await attempt("bearer+cookie", true);
+    const win = a2?.ok ? a2 : (a1.ok ? a1 : (a2 ?? a1));
+
     await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
-    return json({ ok: !gj?.errors, program: reqBody.program, count: classes.length, errors: gj?.errors ?? null, classes });
+    return json({
+      ok: win.ok, program: reqBody.program, count: win.count, classes: win.classes,
+      via: win.label, errors: win.errors,
+      debug: debug ? { cookieNames, attempts: [a1, a2].filter(Boolean) } : undefined,
+    });
   }
 
   // ============================================================
