@@ -38,7 +38,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.5';
+const APP_VERSION = 'Stride · v4.5.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -788,6 +788,22 @@ function openProgram(programId) {
   openSheet(p.title, html);
 }
 
+function renderPrograms() {
+  const sub = document.getElementById('programsSub');
+  const content = document.getElementById('programsContent');
+  if (!content) return;
+  const n = State.programs.length;
+  if (sub) sub.textContent = n ? `${n} ${n === 1 ? 'program' : 'programs'} · tap to see the plan` : 'Ordered class plans';
+  if (!n) {
+    content.innerHTML = `<div class="card" style="text-align:center;padding:28px 16px;color:var(--ink-3);">
+      <div style="font-size:14px;margin-bottom:4px;">No programs yet</div>
+      <div class="tiny" style="color:var(--ink-4);">Curated, ordered class plans will appear here.</div>
+    </div>`;
+    return;
+  }
+  content.innerHTML = programsCardHtml();
+}
+
 // ============================================================
 // MAGIC WEEK · EXERCISE (layered: Peloton → C25K → mix → top-up)
 // ============================================================
@@ -1256,6 +1272,7 @@ function renderAll() {
   renderToday();
   renderExercise();
   renderProgress();
+  renderPrograms();
   renderMeals();
   renderProfile();
   // Post-render: animate any [data-num-id] spans whose value changed
@@ -2928,9 +2945,6 @@ function renderExercise() {
   html += `<div style="text-align:right;margin-bottom:8px;">
     <a href="#" id="clearExerciseLink" onclick="event.preventDefault();clearExerciseWeek(this);" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Clear week</a>
   </div>`;
-
-  // Programs — static ordered manifests, progress via peloton_ride_id join
-  html += programsCardHtml();
 
   // Last-30-days motivation band — sessions · time · calories
   {
