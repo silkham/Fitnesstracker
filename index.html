@@ -1547,6 +1547,7 @@ const State = {
   pendingWrites: [],    // offline queue
   realtimeChannel: null,
   isOnline: navigator.onLine,
+  programProgress: {},  // {program_id: Set<peloton_ride_id>} — completed classes per program
 };
 
 // ============================================================
@@ -1555,7 +1556,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.1';
+const APP_VERSION = 'Stride · v4.2';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -1866,6 +1867,9 @@ async function loadAll() {
 
     // load Peloton API-health heartbeat (single row, safe cols only). Resilient.
     await loadPelotonHealth();
+
+    // load Programs completion (static manifests, joined against done workouts)
+    await loadProgramProgress();
 
     // load ingredients
     if (State.recipes.length) {
@@ -2189,7 +2193,7 @@ async function syncPeloton(showFeedback, force = false) {
     if (showFeedback) { setSync('offline', 'Sync failed'); toast('Peloton sync failed'); }
   } finally {
     State._pelotonSyncing = false;
-    loadPelotonHealth().then(renderAll).catch(() => {});
+    Promise.all([loadPelotonHealth(), loadProgramProgress()]).then(renderAll).catch(() => {});
   }
 }
 
@@ -2234,6 +2238,96 @@ function autoSyncIfDue() {
   if (now - _lastAutoSync < 60_000) return;
   _lastAutoSync = now;
   syncPeloton(false).catch(() => {});
+}
+
+// ============================================================
+// PROGRAMS · static ordered manifests, progress via peloton_ride_id join
+// ============================================================
+// Onboarded via Share → Copy Link per class (see memory: program-discover-your-power-manifest).
+// No live Programs API — Peloton's gql program resolvers are decommissioned (503s service-wide).
+const PROGRAMS = [
+  {
+    id: 'discover-your-power', title: 'Discover Your Power', subtitle: 'Power Zone · 5 weeks',
+    classes: [
+      { order: 1,  ride_id: '9571089a5ca540f5960d84dc7d626009', title: '15 min Intro to Power Zone Ride', instructor: 'Matt Wilpers', duration_min: 15 },
+      { order: 2,  ride_id: '3c1dd65ff61c46a69f79ba7ddf4b4b98', title: '20 min Power Zone Beginner Ride', instructor: 'Matt Wilpers', duration_min: 20 },
+      { order: 3,  ride_id: 'b2582e39db01477c991a8977aa827555', title: '10 min FTP Warm Up Ride', instructor: 'Denis Morton', duration_min: 10 },
+      { order: 4,  ride_id: 'd7869900a95c4a90b594b75673062e58', title: '20 min FTP Test Ride', instructor: 'Denis Morton', duration_min: 20 },
+      { order: 5,  ride_id: '6e513fd6ad1c4d12b829624fa22b38a0', title: '30 min Power Zone Endurance Ride', instructor: "Christine D'Ercole", duration_min: 30 },
+      { order: 6,  ride_id: '9f8c6ae7009e4e44ad9d9c91fa8d86fd', title: '20 min Low Impact Ride', instructor: 'Matt Wilpers', duration_min: 20 },
+      { order: 7,  ride_id: 'a6a39a2560184dec96a87d439048dc94', title: '30 min Power Zone Endurance Ride', instructor: 'Olivia Amato', duration_min: 30 },
+      { order: 8,  ride_id: '780badc02e494abb8ffb8a043235d2b3', title: '30 min Power Zone Hip Hop Ride', instructor: 'Matt Wilpers', duration_min: 30 },
+      { order: 9,  ride_id: '780182ed2ac44246b9e826ad203855a5', title: '45 min Power Zone Endurance Ride', instructor: 'Denis Morton', duration_min: 45 },
+      { order: 10, ride_id: '8e606e35a8634d218f78db1cae4cf2d1', title: '30 min Power Zone Endurance Ride', instructor: 'Olivia Amato', duration_min: 30 },
+      { order: 11, ride_id: '0fd62f3e9aa949eb8d2cd4641ed908b5', title: '45 min Power Zone Endurance Ride', instructor: 'Matt Wilpers', duration_min: 45 },
+      { order: 12, ride_id: '220cdbdbe22242f8b8b8ef0e548a7b53', title: '30 min Power Zone Ride', instructor: "Christine D'Ercole", duration_min: 30 },
+      { order: 13, ride_id: '595e4d603e5c4bef8272753bbcb1eb3e', title: '45 min Power Zone Ride', instructor: 'Matt Wilpers', duration_min: 45 },
+      { order: 14, ride_id: '48da08b46718486da8ad4419ecb33b2c', title: '30 min Power Zone Endurance 80s Ride', instructor: 'Denis Morton', duration_min: 30 },
+      { order: 15, ride_id: '825de1c5798e41e9bd3b4db7b2cef1b6', title: '45 min Power Zone Endurance Ride', instructor: 'Olivia Amato', duration_min: 45 },
+      { order: 16, ride_id: '73cde88db21142eab43d1b04228ba48e', title: '45 min Power Zone Ride', instructor: 'Denis Morton', duration_min: 45 },
+      { order: 17, ride_id: '66c60c8786524fbea290676d13654c32', title: '45 min Power Zone Ride', instructor: 'Sam Yo', duration_min: 45 },
+      { order: 18, ride_id: '3e33d281e4e949fe9a47daa53b02a55f', title: '30 min Power Zone Endurance Ride', instructor: "Christine D'Ercole", duration_min: 30 },
+      { order: 19, ride_id: '70050efac905476aa1c3469138ef30c9', title: '60 min Power Zone Endurance Ride', instructor: 'Matt Wilpers', duration_min: 60 },
+      { order: 20, ride_id: 'daf8d640459e4184bd739fba575b8283', title: '45 min Power Zone Endurance Ride', instructor: 'Denis Morton', duration_min: 45 },
+      { order: 21, ride_id: 'a0cb189126bc4d238d21d7016a6b0e3e', title: '20 min Low Impact Ride', instructor: 'Matt Wilpers', duration_min: 20 },
+      { order: 22, ride_id: '0ba916b716cd408c90f51a0934cee5b8', title: '30 min Power Zone Endurance Rock Ride', instructor: "Christine D'Ercole", duration_min: 30 },
+      { order: 23, ride_id: '6bdfdcefe36d4c7595ff1aae3d50a423', title: '30 min Power Zone Endurance Pop Ride', instructor: 'Olivia Amato', duration_min: 30 },
+      { order: 24, ride_id: '8b42e9fb24784d838f2a2cd73b572e8e', title: '15 min FTP Warm Up Ride', instructor: 'Matt Wilpers', duration_min: 15 },
+      { order: 25, ride_id: '46f4833fd0a44b29acb33e01645388db', title: '20 min FTP Test Ride', instructor: 'Erik Jäger', duration_min: 20 },
+    ],
+  },
+];
+
+// Completed-ride_id sets per program, keyed by program id. Loaded once at
+// startup and refreshed after every Peloton sync (mirrors loadPelotonHealth).
+async function loadProgramProgress() {
+  for (const p of PROGRAMS) {
+    try {
+      const ids = p.classes.map(c => c.ride_id);
+      const { data } = await State.client.from('workouts').select('peloton_ride_id').eq('status', 'done').in('peloton_ride_id', ids);
+      State.programProgress[p.id] = new Set((data || []).map(w => w.peloton_ride_id));
+    } catch (e) { State.programProgress[p.id] = State.programProgress[p.id] || new Set(); }
+  }
+}
+
+function programsCardHtml() {
+  if (!PROGRAMS.length) return '';
+  return PROGRAMS.map(p => {
+    const done = State.programProgress[p.id] || new Set();
+    const doneCount = p.classes.filter(c => done.has(c.ride_id)).length;
+    const pct = Math.round((doneCount / p.classes.length) * 100);
+    return `<div class="card" style="cursor:pointer;margin-bottom:8px;" onclick="openProgram('${p.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span style="font-weight:600;">${escapeHtml(p.title)}</span>
+        <span class="tiny" style="color:var(--ink-3);">${doneCount}/${p.classes.length}</span>
+      </div>
+      <div class="tiny" style="color:var(--ink-4);margin:2px 0 8px;">${escapeHtml(p.subtitle)}</div>
+      <div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openProgram(programId) {
+  const p = PROGRAMS.find(x => x.id === programId);
+  if (!p) return;
+  const done = State.programProgress[p.id] || new Set();
+  const perWeek = 5;
+  let html = '';
+  p.classes.forEach((c, i) => {
+    if (i % perWeek === 0) html += `<div class="eyebrow" style="margin:${i === 0 ? 0 : 16}px 2px 6px;">Week ${Math.floor(i / perWeek) + 1}</div>`;
+    const isDone = done.has(c.ride_id);
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);">
+      <span style="width:18px;height:18px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;
+        background:${isDone ? 'var(--accent)' : 'transparent'};color:${isDone ? 'var(--accent-ink)' : 'var(--ink-4)'};border:1px solid ${isDone ? 'var(--accent)' : 'var(--line-2)'};">${isDone ? '✓' : c.order}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;${isDone ? 'color:var(--ink-3);' : ''}">${escapeHtml(c.title)}</div>
+        <div class="tiny" style="color:var(--ink-4);">${escapeHtml(c.instructor)} · ${c.duration_min} min</div>
+      </div>
+    </div>`;
+  });
+  openSheet(p.title, html);
 }
 
 // ============================================================
@@ -4253,6 +4347,9 @@ function renderExercise() {
   html += `<div style="text-align:right;margin-bottom:8px;">
     <a href="#" id="clearExerciseLink" onclick="event.preventDefault();clearExerciseWeek(this);" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Clear week</a>
   </div>`;
+
+  // Programs — static ordered manifests, progress via peloton_ride_id join
+  html += programsCardHtml();
 
   // Last-30-days motivation band — sessions · time · calories
   {
