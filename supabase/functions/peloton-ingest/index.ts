@@ -482,8 +482,11 @@ Deno.serve(async (req) => {
   // externally (screenshot→OCR); here we look up each class's ride_id via
   // archived cycling rides filtered by instructor, so completed workouts can
   // join to it. POST { catalog:true, classes:[{n?,title,instructor,air_date?,
-  // placeholder?}], commit?:bool }. Dry by default; commit:true upserts the
-  // resolved rows into peloton_classes. Short-circuits the normal ingest.
+  // placeholder?,ride_id?}], commit?:bool, program_id?, program_title?,
+  // program_subtitle? }. Dry by default; commit:true upserts the resolved
+  // rows into peloton_classes, AND (when program_id is supplied) into
+  // programs/program_classes so index.html can render any program generically.
+  // Short-circuits the normal ingest.
   // ============================================================
   if (catalog) {
     const classes: any[] = Array.isArray(reqBody?.classes) ? reqBody.classes : [];
@@ -567,6 +570,8 @@ Deno.serve(async (req) => {
     });
 
     let committed = 0;
+    let programCommitted = 0;
+    const programId = typeof reqBody?.program_id === "string" ? reqBody.program_id : null;
     if (commit) {
       const allRides = Object.values(ridesByInstr).flat();
       const rows = results.filter((r) => r.ride_id).map((r) => {
@@ -583,6 +588,25 @@ Deno.serve(async (req) => {
         if (!w.ok) return json({ ok: false, error: w.err }, 500);
         committed = rows.length;
       }
+
+      // Data-driven Programs (programs/program_classes): only when the caller
+      // names a program_id. Lets index.html render any program generically
+      // instead of a hardcoded per-program JS array.
+      if (programId) {
+        const pw = await restWrite("POST", `programs?on_conflict=id`, [{
+          id: programId, title: reqBody.program_title ?? programId, subtitle: reqBody.program_subtitle ?? null,
+        }]);
+        if (!pw.ok) return json({ ok: false, error: pw.err }, 500);
+        const pcRows = results.filter((r) => r.ride_id).map((r) => ({
+          program_id: programId, order_num: r.n, ride_id: r.ride_id,
+          title: r.matched?.title ?? r.title, instructor: r.instructor, duration_min: r.duration_min,
+        }));
+        if (pcRows.length) {
+          const pcw = await restWrite("POST", `program_classes?on_conflict=program_id,order_num`, pcRows);
+          if (!pcw.ok) return json({ ok: false, error: pcw.err }, 500);
+          programCommitted = pcRows.length;
+        }
+      }
     }
 
     await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
@@ -591,7 +615,7 @@ Deno.serve(async (req) => {
       ambiguous: results.filter((r) => r.confidence === "ambiguous").length,
       none: results.filter((r) => r.confidence === "none").length,
     };
-    return json({ ok: true, catalog: true, commit, committed, summary, results });
+    return json({ ok: true, catalog: true, commit, committed, program_id: programId, programCommitted, summary, results });
   }
 
   // ============================================================
