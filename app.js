@@ -28,6 +28,8 @@ const State = {
   isOnline: navigator.onLine,
   programs: [],         // [{id, title, subtitle, classes:[{order,ride_id,title,instructor,duration_min}]}]
   programProgress: {},  // {program_id: Set<peloton_ride_id>} — completed classes per program
+  trainingTab: 'ride',  // Progress screen: ride | strength discipline toggle
+  oneRmLift: null,      // Progress screen: exercise shown in the 1RM trend
 };
 
 // ============================================================
@@ -36,7 +38,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.4';
+const APP_VERSION = 'Stride · v4.5';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -1253,7 +1255,6 @@ function renderAll() {
   if (_ab && _m) _ab.textContent = ((_m.display_name || '?')[0] || '?').toUpperCase();
   renderToday();
   renderExercise();
-  renderWeight();
   renderProgress();
   renderMeals();
   renderProfile();
@@ -1593,126 +1594,345 @@ function renderSparkline(weights) {
 }
 
 // Larger weight chart for the Weight screen, with an optional goal line.
-function renderWeightChart(weights, goal) {
-  if (weights.length < 2) return '<div class="tiny" style="padding:18px 0;color:var(--ink-4);">Log at least two weigh-ins to see your trend.</div>';
-  const vals = weights.map(w => parseFloat(w.weight_kg));
-  // Scale to the WEIGHT DATA so the trend always uses the full height and stays visible.
-  // Only pull the goal into range if it's close; otherwise the goal line is clamped to the edge.
-  const dmin = Math.min(...vals);
-  const dmax = Math.max(...vals);
-  const span = (dmax - dmin) || 1;
-  let min = dmin - span * 0.18;
-  let max = dmax + span * 0.18;
-  if (goal != null) {
-    if (goal < min && (min - goal) < span * 1.2) min = goal - span * 0.1;
-    if (goal > max && (goal - max) < span * 1.2) max = goal + span * 0.1;
+// ============================================================
+// TRAINING METRICS — derived from workouts (rides) + strength_sets.
+// All pure functions; unit-testable with jsc.
+// ============================================================
+
+// Estimated one-rep max (Epley). Reps beyond ~12 grow unreliable but still map.
+function estimate1RM(weightKg, reps) {
+  const w = parseFloat(weightKg) || 0;
+  const r = parseInt(reps, 10) || 0;
+  if (w <= 0 || r <= 0) return 0;
+  return r === 1 ? w : w * (1 + r / 30);
+}
+
+// Rides done by this member, oldest→newest by date.
+function memberRides(m) {
+  return State.workouts
+    .filter(w => w.member_id === m.id && w.status === 'done' && normType(w.session_type) === 'ride')
+    .slice().sort((a, b) => (a.planned_for || '').localeCompare(b.planned_for || ''));
+}
+
+// FTP change-points over time, collapsing runs of equal ftp: [{date, ftp}]
+function ftpSeries(rides) {
+  const out = [];
+  for (const r of rides) {
+    const f = r.ftp != null ? Math.round(+r.ftp) : null;
+    if (f == null || f <= 0) continue;
+    if (!out.length || out[out.length - 1].ftp !== f) out.push({ date: r.planned_for, ftp: f });
   }
-  const range = max - min || 1;
-  const w = 320, h = 130, px = 4, py = 8;
-  const xStep = (w - px * 2) / (vals.length - 1);
-  const yFor = v => h - py - ((v - min) / range) * (h - py * 2);
-  const points = vals.map((v, i) => [px + i * xStep, yFor(v)]);
-  const pathD = points.map((pt, i) => (i === 0 ? 'M' : 'L') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
-  const areaD = pathD + ` L ${(w - px).toFixed(1)} ${h - py} L ${px} ${h - py} Z`;
-  // Clamp the goal line into the visible band so it shows as an edge reference when far away.
-  const goalY = goal != null ? Math.max(py, Math.min(h - py, yFor(goal))).toFixed(1) : null;
-  return `<svg class="spark-svg" style="height:130px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <path class="area" d="${areaD}" style="fill:var(--accent);fill-opacity:0.18;stroke:none"/>
-    ${goalY != null ? `<line x1="${px}" y1="${goalY}" x2="${w - px}" y2="${goalY}" style="stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;opacity:0.5"/>` : ''}
-    <path d="${pathD}" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>
+  return out;
+}
+
+// avg_output_w for the last n rides that have it, oldest→newest: [{date, w}]
+function outputSeries(rides, n) {
+  return rides.filter(r => r.avg_output_w != null).slice(-(n || 8))
+    .map(r => ({ date: r.planned_for, w: Math.round(+r.avg_output_w) }));
+}
+
+// Mean avg_output_w over rides in [sinceISO, untilISO], or null.
+function avgOutputBetween(rides, sinceISO, untilISO) {
+  const win = rides.filter(r => r.avg_output_w != null && r.planned_for >= sinceISO && r.planned_for <= untilISO);
+  if (!win.length) return null;
+  return Math.round(win.reduce((s, r) => s + (+r.avg_output_w), 0) / win.length);
+}
+
+// Ride PRs: best max output / cadence / longest / leaderboard percentile.
+function ridePRs(rides) {
+  const prs = [];
+  let bo = null, bc = null, bl = null, blb = null;
+  for (const r of rides) {
+    if (r.max_output_w != null && (!bo || +r.max_output_w > +bo.max_output_w)) bo = r;
+    if (r.max_cadence != null && (!bc || +r.max_cadence > +bc.max_cadence)) bc = r;
+    if (r.duration_min != null && (!bl || +r.duration_min > +bl.duration_min)) bl = r;
+    if (r.leaderboard_rank != null && +r.leaderboard_total > 0) {
+      const pct = +r.leaderboard_rank / +r.leaderboard_total;
+      if (!blb || pct < blb.pct) blb = { r, pct };
+    }
+  }
+  if (bo) prs.push({ icon: 'bolt', val: Math.round(+bo.max_output_w) + 'W', label: 'max output', date: bo.planned_for });
+  if (bc) prs.push({ icon: 'rotate', val: Math.round(+bc.max_cadence) + 'rpm', label: 'max cadence', date: bc.planned_for });
+  if (bl) prs.push({ icon: 'clock', val: (+bl.duration_min) + 'min', label: 'longest ride', date: bl.planned_for });
+  if (blb) prs.push({ icon: 'trophy', val: 'Top ' + Math.max(1, Math.round(blb.pct * 100)) + '%', label: 'best leaderboard', date: blb.r.planned_for });
+  return prs;
+}
+
+// Strength sets for member, oldest→newest.
+function memberSets(m) {
+  return State.strengthSets
+    .filter(s => s.member_id === m.id)
+    .slice().sort((a, b) => (a.performed_at || '').localeCompare(b.performed_at || ''));
+}
+
+// Exercise names ranked by set count (most-logged first).
+function exercisesByFrequency(sets) {
+  const c = {};
+  sets.forEach(s => { c[s.exercise] = (c[s.exercise] || 0) + 1; });
+  return Object.keys(c).sort((a, b) => c[b] - c[a]);
+}
+
+// Best estimated 1RM per day for one exercise, oldest→newest: [{date, e1rm}]
+function oneRmSeries(sets, exercise) {
+  const byDate = {};
+  sets.filter(s => s.exercise === exercise).forEach(s => {
+    const e = estimate1RM(s.weight_kg, s.reps);
+    if (!byDate[s.performed_at] || e > byDate[s.performed_at]) byDate[s.performed_at] = e;
+  });
+  return Object.keys(byDate).sort().map(d => ({ date: d, e1rm: byDate[d] }));
+}
+
+// Weekly volume (Σ reps×weight), keyed by ISO week-start, last n weeks: [{week, vol}]
+function weeklyVolume(sets, n) {
+  const byWeek = {};
+  sets.forEach(s => {
+    const ws = weekStartFor(new Date(s.performed_at + 'T00:00:00'));
+    byWeek[ws] = (byWeek[ws] || 0) + (parseInt(s.reps, 10) || 0) * (parseFloat(s.weight_kg) || 0);
+  });
+  return Object.keys(byWeek).sort().slice(-(n || 8)).map(w => ({ week: w, vol: Math.round(byWeek[w]) }));
+}
+
+// Strength PRs: best weight (with its reps) per exercise; top few by frequency.
+function strengthPRs(sets, limit) {
+  return exercisesByFrequency(sets).slice(0, limit || 4).map(ex => {
+    let best = null;
+    sets.filter(s => s.exercise === ex).forEach(s => {
+      const wv = parseFloat(s.weight_kg) || 0;
+      if (!best || wv > best.w) best = { w: wv, reps: parseInt(s.reps, 10) || 0, date: s.performed_at };
+    });
+    return best ? { exercise: ex, ...best } : null;
+  }).filter(Boolean);
+}
+
+// Aggregate HR-zone durations (sec) across done workouts since date.
+// hr_zones = [{slug, duration}] (may arrive as a JSON string). Returns [{z,sec,pct}] or null.
+function aggregateHrZones(m, sinceISO) {
+  const buckets = [0, 0, 0, 0, 0];
+  State.workouts.forEach(w => {
+    if (w.member_id !== m.id || w.status !== 'done' || (w.planned_for || '') < sinceISO) return;
+    let z = w.hr_zones;
+    if (!z) return;
+    if (typeof z === 'string') { try { z = JSON.parse(z); } catch (e) { return; } }
+    if (!Array.isArray(z)) return;
+    z.forEach(zone => {
+      const mm = String(zone.slug || '').match(/(\d)/);
+      if (mm) buckets[Math.min(4, Math.max(0, +mm[1] - 1))] += (+zone.duration || 0);
+    });
+  });
+  const total = buckets.reduce((a, b) => a + b, 0);
+  if (total <= 0) return null;
+  return buckets.map((sec, i) => ({ z: i + 1, sec, pct: Math.round((sec / total) * 100) }));
+}
+
+// ---- tiny chart helpers (generic; oldest→newest values) ----
+function metricSparkline(vals, tint, height) {
+  if (!vals || vals.length < 2) return '<div class="tiny" style="padding:14px 0;color:var(--ink-4);">Not enough data yet.</div>';
+  const h = height || 70, w = 320, p = 6;
+  const min = Math.min(...vals), max = Math.max(...vals), range = (max - min) || 1;
+  const step = (w - p * 2) / (vals.length - 1);
+  const pts = vals.map((v, i) => [p + i * step, h - p - ((v - min) / range) * (h - p * 2)]);
+  const d = pts.map((pt, i) => (i ? 'L' : 'M') + pt[0].toFixed(1) + ' ' + pt[1].toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  return `<svg class="spark-svg" style="height:${h}px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path d="${d}" style="fill:none;stroke:${tint};stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" style="fill:${tint}"/>
   </svg>`;
+}
+function metricBars(vals, tint, height) {
+  if (!vals || !vals.length) return '<div class="tiny" style="padding:14px 0;color:var(--ink-4);">Not enough data yet.</div>';
+  const h = height || 64, w = 320, gap = 8;
+  const max = Math.max(...vals) || 1;
+  const bw = (w - gap * (vals.length - 1)) / vals.length;
+  const bars = vals.map((v, i) => {
+    const bh = Math.max(3, (v / max) * (h - 6));
+    const op = (0.35 + 0.65 * (i / Math.max(1, vals.length - 1))).toFixed(2);
+    return `<rect x="${(i * (bw + gap)).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="3" style="fill:${tint};fill-opacity:${op}"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">${bars}</svg>`;
+}
+function zoneBarHtml(zones) {
+  const colors = ['#3a4252', '#3a6ea5', 'var(--accent)', '#e0a83d', '#e0553d'];
+  const txt = ['var(--ink-3)', '#dbeafe', '#042417', '#3a2607', '#3a0f07'];
+  const segs = zones.filter(z => z.pct > 0).map(z => `<div style="flex:${z.pct};background:${colors[z.z-1]};display:flex;align-items:center;justify-content:center;min-width:0;"><span style="font-size:9px;color:${txt[z.z-1]};font-weight:${z.z >= 3 ? 700 : 500};">${z.pct}%</span></div>`).join('');
+  return `<div style="display:flex;height:22px;border-radius:6px;overflow:hidden;gap:1px;">${segs}</div>`;
+}
+// Small line icons for PR tiles (app doesn't load an icon webfont).
+function prIco(name) {
+  const p = {
+    bolt: '<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>',
+    rotate: '<path d="M4 12a8 8 0 1 1 2.3 5.6"/><path d="M4 20v-4h4"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+    trophy: '<path d="M7 4h10v4a5 5 0 0 1-10 0zM5 6H3v1a3 3 0 0 0 3 3M19 6h2v1a3 3 0 0 1-3 3M9 15h6M12 15v3M9 21h6"/>',
+  };
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p[name] || p.bolt}</svg>`;
 }
 
 // ============================================================
-// RENDER · WEIGHT
+// TRAINING SECTION (ride / strength toggle) — lives on the merged Progress screen
 // ============================================================
-function renderWeight() {
-  const m = activeMember();
-  if (!m) return;
-  const myWeights = State.weights.filter(w => w.member_id === m.id); // newest-first
-  const latest = myWeights[0];
-  const latestVal = latest ? parseFloat(latest.weight_kg) : null;
-  const goalVal = m.weight_goal_kg ? parseFloat(m.weight_goal_kg) : null;
-  const startVal = m.weight_start_kg ? parseFloat(m.weight_start_kg) : null;
-  const momentum = computeWeightMomentum(myWeights);
+function switchTrainingTab(name) {
+  State.trainingTab = name;
+  renderProgress();
+}
+function cycleOneRmLift() {
+  const m = activeMember(); if (!m) return;
+  const order = exercisesByFrequency(memberSets(m));
+  if (order.length < 2) return;
+  const i = order.indexOf(State.oneRmLift || order[0]);
+  State.oneRmLift = order[(i + 1) % order.length];
+  renderProgress();
+}
 
-  document.getElementById('weightSub').innerHTML = myWeights.length
-    ? `${myWeights.length} weigh-in${myWeights.length === 1 ? '' : 's'}${goalVal != null ? ` <span class="pip"></span> goal ${goalVal.toFixed(1)} kg` : ''}`
-    : 'No weigh-ins yet';
+function trainingSectionHtml(m) {
+  const tab = State.trainingTab || 'ride';
+  const seg = `<div class="seg" role="tablist">
+    <button class="seg-btn ${tab === 'ride' ? 'active' : ''}" onclick="switchTrainingTab('ride')">Ride</button>
+    <button class="seg-btn ${tab === 'strength' ? 'active' : ''}" onclick="switchTrainingTab('strength')">Strength</button>
+  </div>`;
+  const cards = tab === 'ride' ? rideTrainingHtml(m) : strengthTrainingHtml(m);
 
-  // Empty state — no weigh-ins logged yet
-  if (!myWeights.length) {
-    document.getElementById('weightContent').innerHTML = `<div class="card-hero">${emptyState(
-      ico('<path d="M4 19h16M5 19l3-10h8l3 10M9 9V7a3 3 0 0 1 6 0v2"/>'),
-      'Step on the scale',
-      'Log your first weigh-in to start your trend — then your trajectory and progress kick in.',
-      `<button class="btn accent" onclick="openWeightEntry()">Log weight</button>`
-    )}</div>`;
-    return;
+  // Shared: 30-day time-in-zone (any session with a HR monitor) + discipline stat row.
+  const since = isoDateAddDays(todayISO(), -30);
+  const zones = aggregateHrZones(m, since);
+  let shared = '';
+  if (zones) {
+    shared += `<div class="card">
+      <div class="card-row" style="margin-bottom:8px;"><span class="eyebrow">Time in zone</span><span class="tiny" style="color:var(--ink-3);">last 30 days</span></div>
+      ${zoneBarHtml(zones)}
+      <div class="tiny" style="color:var(--ink-4);margin-top:5px;">z1 easy → z5 max · sessions with a HR monitor</div>
+    </div>`;
+  }
+  shared += sessionStatsHtml(m, tab);
+
+  return `<div class="section-head"><span class="t">Training</span></div>${seg}${cards}${shared}`;
+}
+
+function rideTrainingHtml(m) {
+  const rides = memberRides(m);
+  if (!rides.length) return `<div class="card"><div class="tiny" style="color:var(--ink-3);">No rides synced yet. Tap “Sync Peloton” on the Train tab to pull your metrics.</div></div>`;
+  let h = '';
+
+  const ftp = ftpSeries(rides);
+  if (ftp.length >= 2) {
+    const first = ftp[0], last = ftp[ftp.length - 1], delta = last.ftp - first.ftp;
+    h += `<div class="card">
+      <div class="card-row" style="margin-bottom:2px;"><span class="eyebrow">FTP progression</span><span class="tiny" style="font-weight:600;color:${delta >= 0 ? 'var(--accent)' : 'var(--ink-3)'};">${delta >= 0 ? '+' : ''}${delta}W</span></div>
+      ${metricSparkline(ftp.map(p => p.ftp), 'var(--accent)', 70)}
+      <div class="metric-legend"><span>${first.ftp}W · ${formatHistoryDate(first.date)}</span><span>${last.ftp}W · now</span></div>
+    </div>`;
+  } else if (ftp.length === 1) {
+    h += `<div class="card"><div class="card-row"><span class="eyebrow">Current FTP</span><span style="font-family:'Archivo Expanded',sans-serif;font-weight:800;font-size:18px;color:var(--ink);">${ftp[0].ftp}W</span></div></div>`;
   }
 
-  let html = '';
-
-  // Hero
-  html += `<div class="card-hero">
-    <div class="card-row" style="align-items:flex-start;">
-      <div>
-        <div class="eyebrow" style="margin-bottom:6px;">Current</div>
-        <div class="stat-hero">${latestVal != null ? latestVal.toFixed(1) : '—'}<span class="u">kg</span></div>
-      </div>
-      <div class="spark-delta ${momentum.cls}" style="padding-top:18px;">${momentum.label}</div>
-    </div>
-    ${renderWeightChart(myWeights.slice(0, 60).reverse(), goalVal)}
-  </div>`;
-
-  // Progress to goal
-  if (goalVal != null && startVal != null && latestVal != null) {
-    const totalToLose = startVal - goalVal;
-    const lostSoFar = startVal - latestVal;
-    const pct = totalToLose !== 0 ? Math.max(0, Math.min(100, (lostSoFar / totalToLose) * 100)) : 0;
-    const toGo = latestVal - goalVal;
-    html += `<div class="card">
-      <div class="card-row" style="margin-bottom:8px;">
-        <span class="eyebrow">Goal progress</span>
-        <span class="tiny" style="color:var(--ink-2);font-weight:600;">${Math.round(pct)}%</span>
-      </div>
-      <div style="height:8px;background:var(--paper-3);border-radius:var(--radius-full);overflow:hidden;">
-        <div style="height:100%;width:${pct.toFixed(0)}%;background:var(--accent);border-radius:var(--radius-full);transition:width var(--dur-slow) var(--ease-settle);"></div>
-      </div>
-      <div class="goal-row" style="margin-top:8px;">
-        <span>Start ${startVal.toFixed(1)}</span>
-        <span>${toGo > 0 ? `<b>${toGo.toFixed(1)} kg</b> to go` : '<b>Goal reached</b>'}</span>
-        <span>Goal ${goalVal.toFixed(1)}</span>
-      </div>
+  const outSeries = outputSeries(rides, 8);
+  if (outSeries.length >= 2) {
+    const today = todayISO();
+    const cur = avgOutputBetween(rides, isoDateAddDays(today, -28), today);
+    const prior = avgOutputBetween(rides, isoDateAddDays(today, -56), isoDateAddDays(today, -29));
+    const delta = (cur != null && prior != null) ? cur - prior : null;
+    h += `<div class="card">
+      <div class="card-row" style="margin-bottom:8px;"><span class="eyebrow">Output trend</span><span class="tiny" style="color:var(--ink-3);">last ${outSeries.length} rides</span></div>
+      ${metricSparkline(outSeries.map(p => p.w), 'var(--accent)', 68)}
+      <div class="card-row" style="margin-top:6px;"><span><b style="font-family:'Archivo Expanded',sans-serif;font-size:19px;color:var(--ink);">${cur != null ? cur : '—'}W</b> <span class="tiny" style="color:var(--ink-3);">avg, last 4wk</span></span>${delta != null ? `<span class="tiny" style="font-weight:700;color:${delta >= 0 ? 'var(--accent)' : 'var(--ink-3)'};">${delta >= 0 ? '+' : ''}${delta}W vs prior</span>` : ''}</div>
     </div>`;
   }
 
-  // Log button
-  html += `<button class="btn accent block" style="margin:4px 0 18px;" onclick="openWeightEntry()">Log today's weight</button>`;
+  const prs = ridePRs(rides);
+  if (prs.length) {
+    h += `<div class="card"><div class="eyebrow" style="margin-bottom:10px;">Personal records</div><div class="pr-grid">${prs.map(p => `
+      <div class="pr-item">${prIco(p.icon)}<div style="min-width:0;"><div class="pr-val">${p.val}</div><div class="pr-label">${p.label} · ${formatHistoryDate(p.date)}</div></div></div>`).join('')}</div></div>`;
+  }
+  return h;
+}
 
-  // History
-  if (myWeights.length) {
-    html += `<div class="section-head"><span class="t">History</span></div>`;
-    html += myWeights.slice(0, 30).map((wEntry, i) => {
-      const v = parseFloat(wEntry.weight_kg);
-      const prev = myWeights[i + 1] ? parseFloat(myWeights[i + 1].weight_kg) : null;
-      let delta = '';
-      if (prev != null) {
-        const d = v - prev;
-        if (Math.abs(d) < 0.05) delta = `<span class="tiny" style="color:var(--ink-4);">±0</span>`;
-        else delta = `<span class="tiny" style="color:${d < 0 ? 'var(--accent)' : 'var(--ink-3)'};font-weight:600;">${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(1)}</span>`;
-      }
-      return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:6px;cursor:pointer;" onclick="openWeightEntryFor('${wEntry.logged_at}')">
-        <span class="tiny" style="color:var(--ink-3);">${formatHistoryDate(wEntry.logged_at)}</span>
-        <span style="display:flex;align-items:center;gap:10px;">
-          ${delta}
-          <span style="font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:700;font-size:16px;color:var(--ink);">${v.toFixed(1)}<span style="font-size:11px;color:var(--ink-3);font-weight:600;margin-left:2px;">kg</span></span>
-        </span>
-      </div>`;
-    }).join('');
+function strengthTrainingHtml(m) {
+  const sets = memberSets(m);
+  if (!sets.length) return `<div class="card"><div class="tiny" style="color:var(--ink-3);">No lifts logged yet. Log sets on the Train tab to track your strength.</div></div>`;
+  let h = '';
+
+  const order = exercisesByFrequency(sets);
+  if (!State.oneRmLift || !order.includes(State.oneRmLift)) State.oneRmLift = order[0];
+  const lift = State.oneRmLift;
+  const series = oneRmSeries(sets, lift);
+  const liftChip = order.length > 1
+    ? `<button class="lift-chip" onclick="cycleOneRmLift()">${escapeHtml(lift)} ›</button>`
+    : `<span class="lift-chip static">${escapeHtml(lift)}</span>`;
+  if (series.length >= 2) {
+    const first = series[0], last = series[series.length - 1], delta = last.e1rm - first.e1rm;
+    h += `<div class="card">
+      <div class="card-row" style="margin-bottom:2px;"><span class="eyebrow">Estimated 1RM</span><span class="tiny" style="font-weight:600;color:${delta >= 0 ? 'var(--accent)' : 'var(--ink-3)'};">${delta >= 0 ? '+' : ''}${delta.toFixed(1)}kg</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin:4px 0 2px;">
+        <span style="font-family:'Archivo Expanded',sans-serif;font-size:26px;font-weight:800;color:var(--ink);line-height:1;">${last.e1rm.toFixed(0)}<span style="font-size:12px;color:var(--ink-3);font-weight:600;">kg</span></span>
+        ${liftChip}
+      </div>
+      ${metricSparkline(series.map(p => p.e1rm), '#5cc6ff', 68)}
+      <div class="metric-legend"><span>${first.e1rm.toFixed(0)}kg · ${formatHistoryDate(first.date)}</span><span>now</span></div>
+    </div>`;
+  } else {
+    const last = series[series.length - 1];
+    h += `<div class="card">
+      <div class="card-row" style="margin-bottom:2px;"><span class="eyebrow">Estimated 1RM</span>${liftChip}</div>
+      <div style="font-family:'Archivo Expanded',sans-serif;font-size:24px;font-weight:800;color:var(--ink);margin-top:4px;">${last ? last.e1rm.toFixed(0) : '—'}<span style="font-size:12px;color:var(--ink-3);font-weight:600;">kg</span></div>
+      <div class="tiny" style="color:var(--ink-4);margin-top:2px;">Log this lift again to see the trend.</div>
+    </div>`;
   }
 
-  document.getElementById('weightContent').innerHTML = html;
+  const vol = weeklyVolume(sets, 8);
+  if (vol.length >= 2) {
+    const cur = vol[vol.length - 1].vol, prior = vol[vol.length - 2].vol;
+    const pct = prior > 0 ? Math.round(((cur - prior) / prior) * 100) : null;
+    h += `<div class="card">
+      <div class="card-row" style="margin-bottom:8px;"><span class="eyebrow">Weekly volume</span><span class="tiny" style="color:var(--ink-3);">last ${vol.length} weeks</span></div>
+      ${metricBars(vol.map(v => v.vol), '#5cc6ff', 64)}
+      <div class="card-row" style="margin-top:6px;"><span><b style="font-family:'Archivo Expanded',sans-serif;font-size:19px;color:var(--ink);">${cur.toLocaleString()}kg</b> <span class="tiny" style="color:var(--ink-3);">this week</span></span>${pct != null ? `<span class="tiny" style="font-weight:700;color:${pct >= 0 ? 'var(--accent)' : 'var(--ink-3)'};">${pct >= 0 ? '+' : ''}${pct}% vs prior</span>` : ''}</div>
+    </div>`;
+  }
+
+  const prs = strengthPRs(sets, 4);
+  if (prs.length) {
+    h += `<div class="card"><div class="eyebrow" style="margin-bottom:10px;">Personal records</div><div class="pr-grid">${prs.map(p => `
+      <div><div class="pr-val">${fmtKg(p.w)}<span style="font-size:10px;color:var(--ink-4);font-weight:600;"> ×${p.reps}</span></div><div class="pr-label">${escapeHtml(p.exercise)} · ${formatHistoryDate(p.date)}</div></div>`).join('')}</div></div>`;
+  }
+  return h;
+}
+
+// 30-day session stat row, adapted to the active discipline tab.
+function sessionStatsHtml(m, tab) {
+  const since = isoDateAddDays(todayISO(), -30);
+  const col = { accent: 'var(--accent)', strength: '#5cc6ff', warn: '#ffb84d', ink: 'var(--ink)' };
+  let items;
+  if (tab === 'ride') {
+    const rides = State.workouts.filter(w => w.member_id === m.id && w.status === 'done' && normType(w.session_type) === 'ride' && w.planned_for >= since);
+    const mins = rides.reduce((s, w) => s + (w.duration_min || 0), 0);
+    const kcal = rides.reduce((s, w) => s + (w.calories || 0), 0);
+    const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}` : `${mins}`;
+    items = [['accent', rides.length, 'rides'], ['ink', timeStr, mins >= 60 ? 'trained' : 'min trained']];
+    if (kcal > 0) items.push(['warn', kcal.toLocaleString(), 'kcal']);
+  } else {
+    const sets = memberSets(m).filter(s => s.performed_at >= since);
+    const days = new Set(sets.map(s => s.performed_at)).size;
+    const vol = sets.reduce((s, x) => s + (parseInt(x.reps, 10) || 0) * (parseFloat(x.weight_kg) || 0), 0);
+    items = [['strength', days, 'sessions'], ['ink', Math.round(vol).toLocaleString(), 'kg volume'], ['ink', sets.length, 'sets']];
+  }
+  if (!items.length) return '';
+  return `<div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:14px 12px;">${items.map(([c, v, l]) => `<div><div class="stat-num" style="font-size:22px;color:${col[c] || 'var(--ink)'};">${v}</div><div class="stat-label">${l}</div></div>`).join('')}</div>`;
+}
+
+// Full weigh-in history (sheet) — the "Show all" target on the merged screen.
+function openWeightHistory() {
+  const m = activeMember(); if (!m) return;
+  const myWeights = State.weights.filter(w => w.member_id === m.id);
+  const html = myWeights.map((wEntry, i) => {
+    const v = parseFloat(wEntry.weight_kg);
+    const prev = myWeights[i + 1] ? parseFloat(myWeights[i + 1].weight_kg) : null;
+    let delta = '';
+    if (prev != null) {
+      const d = v - prev;
+      delta = Math.abs(d) < 0.05 ? `<span class="tiny" style="color:var(--ink-4);">±0</span>` : `<span class="tiny" style="color:${d < 0 ? 'var(--accent)' : 'var(--ink-3)'};font-weight:600;">${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(1)}</span>`;
+    }
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 2px;border-top:1px solid var(--line);cursor:pointer;" onclick="closeSheet();openWeightEntryFor('${wEntry.logged_at}')"><span class="tiny" style="color:var(--ink-3);">${formatHistoryDate(wEntry.logged_at)}</span><span style="display:flex;align-items:center;gap:10px;">${delta}<b style="font-family:'Archivo Expanded',sans-serif;font-size:15px;color:var(--ink);">${v.toFixed(1)}kg</b></span></div>`;
+  }).join('');
+  openSheet('Weigh-in history', html);
 }
 
 function formatHistoryDate(iso) {
@@ -1791,26 +2011,40 @@ function renderTrajectoryChart(weights, goal, proj) {
   </svg>`;
 }
 
+// Merged Progress screen: weight trajectory + goal + training (ride/strength) + weigh-in history.
 function renderProgress() {
   const m = activeMember();
   const root = document.getElementById('progressContent');
   if (!root || !m) return;
-  const myWeights = State.weights.filter(w => w.member_id === m.id);
+  const myWeights = State.weights.filter(w => w.member_id === m.id); // newest-first
   const goal = m.weight_goal_kg ? parseFloat(m.weight_goal_kg) : null;
   const startVal = m.weight_start_kg ? parseFloat(m.weight_start_kg) : null;
   const latest = myWeights[0] ? parseFloat(myWeights[0].weight_kg) : null;
   const proj = computeProjection(myWeights, goal);
-  const today = todayISO();
 
   let sub = 'Your journey';
-  if (latest != null && goal != null && latest <= goal) sub = 'goal reached 🎉';
+  if (!myWeights.length) sub = 'Log a weigh-in to begin';
+  else if (latest != null && goal != null && latest <= goal) sub = 'goal reached 🎉';
   else if (proj && proj.onTrack && proj.goalDate) sub = `on track · goal by ${fmtGoalDate(proj.goalDate)}`;
   else if (goal != null) sub = 'keep going · log to project';
   const subEl = document.getElementById('progressSub');
   if (subEl) subEl.textContent = sub;
 
+  // Empty state — no weigh-ins yet (training still shows below if they have workouts)
   let html = '';
+  if (!myWeights.length) {
+    html += `<div class="card-hero">${emptyState(
+      ico('<path d="M4 19h16M5 19l3-10h8l3 10M9 9V7a3 3 0 0 1 6 0v2"/>'),
+      'Step on the scale',
+      'Log your first weigh-in to start your trend — then your trajectory and training insights kick in.',
+      `<button class="btn accent" onclick="openWeightEntry()">Log weight</button>`
+    )}</div>`;
+    html += trainingSectionHtml(m);
+    root.innerHTML = html;
+    return;
+  }
 
+  // Weight hero — trajectory (with projection when a goal exists)
   if (latest != null && goal != null) {
     const toGo = latest - goal;
     const rateStr = proj ? `${proj.ratePerWeek <= 0 ? '−' : '+'}${Math.abs(proj.ratePerWeek).toFixed(2)} kg/wk` : '';
@@ -1835,24 +2069,37 @@ function renderProgress() {
       ${lostStr != null ? `<div class="stat-tile"><div class="stat-num"><span class="accent">${lostStr}</span><span class="frac">kg</span></div><div class="stat-label">lost so far</div></div>` : ''}
     </div>`;
   } else {
-    html += `<div class="card-hero"><div class="eyebrow" style="margin-bottom:6px;">Progress</div><div class="wc-title">Set a start &amp; goal weight</div><div class="wc-sub">Add them in You (top-right) to see your trajectory.</div></div>`;
-  }
-
-  // Training insights — last 30 days
-  {
-    const since = isoDateAddDays(today, -30);
-    const done30 = State.workouts.filter(w => w.member_id === m.id && w.status === 'done' && w.planned_for >= since && w.planned_for <= today);
-    const mins30 = done30.reduce((s, w) => s + (w.duration_min || 0), 0);
-    const kcal30 = done30.reduce((s, w) => s + (w.calories || 0), 0);
-    const hrs = Math.floor(mins30 / 60), rem = mins30 % 60;
-    const timeStr = mins30 >= 60 ? `${hrs}h ${rem}` : `${mins30}`;
-    html += `<div class="section-head"><span class="t">Last 30 days</span></div>
-    <div class="card" style="display:flex;justify-content:space-around;text-align:center;padding:16px 14px;">
-      <div><div class="stat-num" style="font-size:24px;"><span class="accent">${done30.length}</span></div><div class="stat-label">sessions</div></div>
-      <div><div class="stat-num" style="font-size:24px;">${timeStr}<span class="frac">${mins30 >= 60 ? 'm' : ' min'}</span></div><div class="stat-label">trained</div></div>
-      ${kcal30 > 0 ? `<div><div class="stat-num" style="font-size:24px;color:#ffb84d;">${kcal30.toLocaleString()}</div><div class="stat-label">kcal</div></div>` : ''}
+    // Weigh-ins but no goal — still show the plain trend.
+    html += `<div class="card-hero">
+      <div class="card-row" style="align-items:flex-start;">
+        <div><div class="eyebrow" style="margin-bottom:6px;">Now</div><div class="stat-hero">${latest != null ? latest.toFixed(1) : '—'}<span class="u">kg</span></div></div>
+      </div>
+      ${renderTrajectoryChart(myWeights, null, null)}
+      <div class="wc-sub" style="margin-top:8px;">Set a start &amp; goal weight in You (top-right) to project your trajectory.</div>
     </div>`;
   }
+
+  html += `<button class="btn accent block" style="margin:4px 0 18px;" onclick="openWeightEntry()">Log today's weight</button>`;
+
+  // Training (ride / strength toggle) + shared zone + stat row
+  html += trainingSectionHtml(m);
+
+  // Weigh-in history — recent 6, with "Show all" sheet
+  html += `<div class="section-head"><span class="t">Weigh-in history</span>${myWeights.length > 6 ? `<a href="#" onclick="event.preventDefault();openWeightHistory();" style="color:var(--accent);text-decoration:none;font-size:12px;">Show all</a>` : ''}</div>`;
+  html += myWeights.slice(0, 6).map((wEntry, i) => {
+    const v = parseFloat(wEntry.weight_kg);
+    const prev = myWeights[i + 1] ? parseFloat(myWeights[i + 1].weight_kg) : null;
+    let delta = '';
+    if (prev != null) {
+      const d = v - prev;
+      if (Math.abs(d) < 0.05) delta = `<span class="tiny" style="color:var(--ink-4);">±0</span>`;
+      else delta = `<span class="tiny" style="color:${d < 0 ? 'var(--accent)' : 'var(--ink-3)'};font-weight:600;">${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(1)}</span>`;
+    }
+    return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:6px;cursor:pointer;" onclick="openWeightEntryFor('${wEntry.logged_at}')">
+      <span class="tiny" style="color:var(--ink-3);">${formatHistoryDate(wEntry.logged_at)}</span>
+      <span style="display:flex;align-items:center;gap:10px;">${delta}<span style="font-family:'Archivo Expanded','Archivo',sans-serif;font-weight:700;font-size:16px;color:var(--ink);">${v.toFixed(1)}<span style="font-size:11px;color:var(--ink-3);font-weight:600;margin-left:2px;">kg</span></span></span>
+    </div>`;
+  }).join('');
 
   root.innerHTML = html;
 }
