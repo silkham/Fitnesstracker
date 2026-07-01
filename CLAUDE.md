@@ -35,14 +35,19 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
 - `main` stays deployable. Branch for exploratory/risky work.
 - One concern per commit. Never leave TEMP/probe/debug code in `main`.
 - Commit message style: `<version>: <summary>` e.g. `4.3: Programs → data-driven`.
-- Bump `APP_VERSION` (in index.html) each user-facing deploy — it shows on the You page.
+- Bump `APP_VERSION` each user-facing deploy — it shows on the You page. It now
+  lives in `app.js` (near the top, after the `State` object), NOT in index.html.
 
 ## Testing (no Node/npm/deno on this machine)
 - Pure logic should have tests. Run them with JavaScriptCore:
   `/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc`
-- Syntax-check inline JS: python-extract the non-src `<script>` blocks to a temp .js,
-  then `jsc -e "new Function(readFile('/tmp/x.js'))"`. jsc proves JS RUNS, not that it
-  LOOKS right — it can't catch CSS/visual bugs.
+- Syntax-check JS: `jsc -e "new Function(readFile('app.js'))"`. jsc proves JS RUNS,
+  not that it LOOKS right — it can't catch CSS/visual bugs.
+- **Live browser preview is environmentally blocked for this project.** The preview
+  server process is sandboxed out of the project directory (every file 404s; even a
+  custom no-`getcwd` server can't read the tree). Don't burn time trying to launch it —
+  verify with jsc parse + pure-logic unit tests + the onclick-handler grep, and flag a
+  manual click-through on the live URL as the visual safety net after deploy.
 
 ## Supabase (project ref: dgbbyijhabjozqrkokrq)
 - Deploy a function: `supabase functions deploy <name> --project-ref dgbbyijhabjozqrkokrq`
