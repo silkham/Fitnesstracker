@@ -5,21 +5,26 @@ Single-user athletic weight-loss PWA. Static frontend + Supabase (Postgres + RLS
 https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys.
 
 ## Architecture (most important)
-- The frontend is ONE legacy `index.html` (~6,300 lines: CSS + HTML + ~4,700 lines
-  inline JS). This is being unwound. The split is NOT done yet — be honest about that.
-- **Do NOT add new logic to the inline `<script>`.** Move code OUT of index.html as
-  you touch it: JS → its own file, CSS → its own file. Target end state:
-  `index.html` is markup only, styles in `styles.css`, logic in `app.js` (and, only
-  where a concern is genuinely self-contained + DOM-free, ES modules by concern).
-- **THE ONCLICK LANDMINE (read before any JS move):** there are ~157
+- The frontend is now THREE files: `index.html` (markup only, ~230 lines),
+  `styles.css` (the design system), and `app.js` (the ~4,700-line application logic,
+  loaded as a PLAIN classic `<script src="app.js">` after the Supabase CDN script).
+  The base CSS/JS extraction is DONE (v4.4). `app.js` is still one big global-scope
+  script — the next direction is splitting it by concern, NOT re-inlining anything.
+- **Do NOT add logic back into `index.html`.** New JS goes in `app.js` (or a new
+  file); new CSS goes in `styles.css`. Target end state: where a concern is genuinely
+  self-contained + DOM-free, break it into ES modules by concern.
+- **THE ONCLICK LANDMINE (still live — read before splitting app.js):** there are ~157
   `onclick="fnName(...)"` bindings — in static markup AND inside template-string
   render functions. Classic `<script>` makes those functions global, so they work.
   If you convert JS to `<script type="module">`, module scope hides them and EVERY
   handler silently breaks. When moving a function that any `onclick` calls, either
   keep it a classic global script, expose it on `window`, or migrate the call site
   to `addEventListener`. There is no test net to catch this — verify by hand.
-- Prefer extracting to a PLAIN classic `app.js` first (keeps global scope, zero
-  handler risk). Treat ES-modules-by-concern as a direction, not a mandate.
+  Verify by grepping every `onclick=`/`on*=` target and confirming each still maps
+  to a top-level global in `app.js` (that's how v4.4 was checked).
+- `app.js` stays a PLAIN classic global script for now (zero handler risk). Only
+  peel a concern into an ES module once it's genuinely DOM-free and no `onclick`
+  reaches it. Treat ES-modules-by-concern as a direction, not a mandate.
 
 ## Security (already correct — keep it)
 - Supabase anon key is public by design; data protected by Row Level Security.
