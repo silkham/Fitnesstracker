@@ -250,6 +250,25 @@ function extractMetrics(pg: any): Record<string, any> {
   return out;
 }
 
+// ---- catalog/manifest-resolution helpers -------------------
+// Fold a name/title to a comparison key: strip diacritics, punctuation, case
+// ("Christine D'Ercole" → "christinedercole", "Erik Jäger" → "erikjager").
+function foldName(s: unknown): string {
+  return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+// Duration in minutes from a class title like "15 min Intro to Power Zone Ride".
+function durFromTitle(t: unknown): number | null {
+  const m = String(t ?? "").match(/(\d+)\s*min/i);
+  return m ? Number(m[1]) : null;
+}
+// DD/MM/YY(YY) → day-since-epoch (UTC) for tolerant date matching.
+function dmyDay(s: string): number | null {
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  let y = +m[3]; if (y < 100) y += 2000;
+  return Math.floor(Date.UTC(y, +m[2] - 1, +m[1]) / 1000 / 86400);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method === "GET") return json({ ok: true, service: "peloton-ingest" });
@@ -277,6 +296,7 @@ Deno.serve(async (req) => {
   let reqBody: any = {};
   try { reqBody = await req.json(); } catch { /* empty body ok */ }
   const force = reqBody?.force === true;
+  const catalog = reqBody?.catalog === true;
   const MEMBER_ID = Deno.env.get("MEMBER_ID")!;
   const HOUSEHOLD_ID = Deno.env.get("HOUSEHOLD_ID")!;
   const EMAIL = Deno.env.get("PELOTON_EMAIL") ?? "";
@@ -330,6 +350,156 @@ Deno.serve(async (req) => {
     household_id: HOUSEHOLD_ID, member_id: MEMBER_ID, provider: "peloton",
     refresh_token: refresh, peloton_user_id: uid, updated_at: new Date().toISOString(),
   }]);
+
+  // ============================================================
+  // PROGRAM (GraphQL) — fetch a program's ordered class list directly.
+  // Programs are GraphQL-only (no REST). Schema is fully mapped:
+  //   program(programId:String!) / programsById(programIds:[String!]!) → Program
+  //   Program.classes → [ProgramClass!]!, ProgramClass.pelotonClassId
+  //   (base64 JSON wrapping ride_id). Introspection is off; discovered via
+  //   Apollo "did you mean" suggestions.
+  // STATUS: BLOCKED — both resolvers return 503 to our server-side Bearer
+  // request (auth passes: unauth=Forbidden, authed=503). Client-header
+  // variations don't help; next hypothesis is the program service wants the
+  // web SESSION COOKIE from the Auth0 login (currently discarded), not the
+  // Bearer. This is the automation path meant to replace OCR — finish the
+  // cookie spike, then it's a one-call program ingest. POST { program:"<uuid>" }.
+  // ============================================================
+  if (typeof reqBody?.program === "string" && reqBody.program) {
+    const GQL = "https://gql-graphql-gateway.prod.k8s.onepeloton.com/graphql";
+    const query = `query($ids:[String!]!){ programsById(programIds:$ids){ classes{ pelotonClassId } } }`;
+    const gr = await fetch(GQL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json", Accept: "application/json", "Peloton-Platform": "web", "User-Agent": UA },
+      body: JSON.stringify({ query, variables: { ids: [reqBody.program] } }),
+    });
+    const gj = await gr.json().catch(() => ({}));
+    const decode = (pcid: string): string | null => {
+      try { const j = JSON.parse(atob(pcid)); return j.ride_id ?? j.rideId ?? j.id ?? null; } catch { return null; }
+    };
+    const raw = gj?.data?.programsById?.[0]?.classes ?? [];
+    const classes = raw.map((c: any, i: number) => ({ n: i + 1, pelotonClassId: c.pelotonClassId, ride_id: decode(c.pelotonClassId) }));
+    await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
+    return json({ ok: !gj?.errors, program: reqBody.program, count: classes.length, errors: gj?.errors ?? null, classes });
+  }
+
+  // ============================================================
+  // CATALOG — resolve a supplied program manifest to peloton_ride_ids.
+  // Programs aren't reachable via API, so the ordered class list is captured
+  // externally (screenshot→OCR); here we look up each class's ride_id via
+  // archived cycling rides filtered by instructor, so completed workouts can
+  // join to it. POST { catalog:true, classes:[{n?,title,instructor,air_date?,
+  // placeholder?}], commit?:bool }. Dry by default; commit:true upserts the
+  // resolved rows into peloton_classes. Short-circuits the normal ingest.
+  // ============================================================
+  if (catalog) {
+    const classes: any[] = Array.isArray(reqBody?.classes) ? reqBody.classes : [];
+    if (!classes.length) return json({ ok: false, error: "catalog: no classes[] supplied" }, 400);
+    const commit = reqBody?.commit === true;
+    const iso10 = (unixSec: number) => new Date(unixSec * 1000).toISOString().slice(0, 10);
+    const dayOf = (unixSec: number) => Math.floor(unixSec / 86400);
+
+    // instructor name ↔ id
+    const insResp = await api(access, "api/instructor?limit=100");
+    const nameById: Record<string, string> = {};
+    const idByName: Record<string, string> = {};
+    for (const i of (insResp.data ?? [])) { nameById[i.id] = i.name; idByName[foldName(i.name)] = i.id; }
+
+    // page archived cycling rides for only the instructors we need
+    const needIds = new Set<string>();
+    for (const c of classes) { const id = idByName[foldName(c.instructor)]; if (id) needIds.add(id); }
+    const ridesByInstr: Record<string, any[]> = {};
+    for (const id of needIds) {
+      const acc: any[] = [];
+      for (let page = 0; page < 30; page++) {
+        const resp = await api(access, `api/v2/ride/archived?browse_category=cycling&content_format=audio,video&limit=100&page=${page}&sort_by=original_air_time&desc=false&instructor_id=${id}`);
+        const data = resp.data ?? [];
+        for (const r of data) if (String(r.instructor_id) === String(id)) acc.push(r);
+        if (data.length < 100) break;
+      }
+      ridesByInstr[id] = acc;
+    }
+
+    // explicit ride_id overrides (from app share links): some program classes
+    // point at re-aired instances the archive endpoint doesn't return, so we
+    // fetch their real details directly and skip fuzzy resolution.
+    const detailsById: Record<string, any> = {};
+    for (const c of classes) {
+      if (c.ride_id && !detailsById[c.ride_id]) {
+        try { const d = await api(access, `api/ride/${c.ride_id}/details`); detailsById[c.ride_id] = d.ride ?? d; }
+        catch (e) { detailsById[c.ride_id] = { __error: String(e).slice(0, 160) }; }
+      }
+    }
+
+    // match each manifest class: instructor + duration primary, air date within
+    // ±1 day, title fold as tiebreak. Placeholder-dated rows fall back to title.
+    const results = classes.map((c: any, idx: number) => {
+      const wantDur = durFromTitle(c.title);
+      if (c.ride_id) {
+        const d = detailsById[c.ride_id];
+        const ok = d && !d.__error;
+        return {
+          n: c.n ?? idx + 1, title: c.title, instructor: c.instructor, duration_min: wantDur, air_date: c.air_date ?? null,
+          confidence: ok ? "explicit" : "explicit-error", ride_id: ok ? c.ride_id : null,
+          matched: ok ? { title: d.title, air_time: d.original_air_time ? iso10(d.original_air_time) : null } : null,
+          candidates: ok ? undefined : [{ error: d?.__error ?? "no details" }],
+        };
+      }
+      const insId = idByName[foldName(c.instructor)];
+      const wantTitle = foldName(c.title);
+      const placeholder = c.placeholder === true || /^28\/04\/23$/.test(String(c.air_date ?? ""));
+      const wantDay = placeholder ? null : dmyDay(String(c.air_date ?? ""));
+      const byDur = (ridesByInstr[insId] ?? []).filter((r: any) => Math.round((r.duration ?? 0) / 60) === wantDur);
+      let match: any = null, confidence = "none", pick: any[] = byDur;
+      if (wantDay != null) {
+        const dated = byDur.filter((r: any) => Math.abs(dayOf(r.original_air_time) - wantDay) <= 1);
+        if (dated.length === 1) { match = dated[0]; confidence = "high"; }
+        else if (dated.length > 1) {
+          const t = dated.filter((r: any) => foldName(r.title) === wantTitle);
+          if (t.length === 1) { match = t[0]; confidence = "high"; } else { pick = dated; confidence = "ambiguous"; }
+        } else {
+          const t = byDur.filter((r: any) => foldName(r.title) === wantTitle);
+          if (t.length === 1) { match = t[0]; confidence = "medium-datemiss"; } else { pick = t.length ? t : byDur; confidence = t.length ? "ambiguous" : "none"; }
+        }
+      } else {
+        const t = byDur.filter((r: any) => foldName(r.title) === wantTitle);
+        if (t.length === 1) { match = t[0]; confidence = "medium-nodate"; } else { pick = t.length ? t : byDur; confidence = t.length ? "ambiguous" : "none"; }
+      }
+      return {
+        n: c.n ?? idx + 1, title: c.title, instructor: c.instructor, duration_min: wantDur, air_date: c.air_date ?? null,
+        confidence, ride_id: match?.id ?? null,
+        matched: match ? { title: match.title, air_time: iso10(match.original_air_time) } : null,
+        candidates: match ? undefined : pick.slice(0, 6).map((r: any) => ({ ride_id: r.id, title: r.title, air_time: iso10(r.original_air_time) })),
+      };
+    });
+
+    let committed = 0;
+    if (commit) {
+      const allRides = Object.values(ridesByInstr).flat();
+      const rows = results.filter((r) => r.ride_id).map((r) => {
+        const src = detailsById[r.ride_id!] ?? allRides.find((x: any) => x.id === r.ride_id)!;
+        return {
+          peloton_ride_id: r.ride_id, title: src.title, instructor: nameById[src.instructor_id] ?? r.instructor,
+          duration_min: Math.round((src.duration ?? 0) / 60), discipline: "cycling",
+          original_air_time: new Date(src.original_air_time * 1000).toISOString(),
+          image_url: src.image_url ?? null, difficulty: src.difficulty_rating_avg ?? null, synced_at: new Date().toISOString(),
+        };
+      });
+      if (rows.length) {
+        const w = await restWrite("POST", `peloton_classes?on_conflict=peloton_ride_id`, rows);
+        if (!w.ok) return json({ ok: false, error: w.err }, 500);
+        committed = rows.length;
+      }
+    }
+
+    await writeHealth({ last_success_at: new Date().toISOString(), fail_count: 0, last_error: null });
+    const summary = {
+      total: results.length, resolved: results.filter((r) => r.ride_id).length,
+      ambiguous: results.filter((r) => r.confidence === "ambiguous").length,
+      none: results.filter((r) => r.confidence === "none").length,
+    };
+    return json({ ok: true, catalog: true, commit, committed, summary, results });
+  }
 
   // ============================================================
   // PASS 1 — COMPLETED workouts (rich metrics, dedup by workout id)
