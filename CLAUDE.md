@@ -53,5 +53,30 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
 - Deploy a function: `supabase functions deploy <name> --project-ref dgbbyijhabjozqrkokrq`
   (CLI is system-wide, logged in account-wide; Docker not needed).
 - Run SQL: `supabase db query --linked -f <file>.sql` (after `supabase link --project-ref ...`).
+  This runs as postgres (bypasses RLS) — the way to verify user-owned rows
+  (e.g. `workouts`) that the anon key can't read.
 - Ship schema changes as `supabase-phaseN-*.sql` files. Do NOT auto-run destructive
   SQL (DROP/DELETE) — hand it to the user to run, after showing it.
+- The peloton-ingest INGEST_SECRET is recoverable from `cron.job` (job
+  `peloton-ingest-4h`) via db query — use it as the Bearer to drive the function
+  from the CLI (e.g. the catalog branch).
+
+## Program onboarding (proven pipeline — no OCR, no Peloton program API)
+- Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
+  Every class links to `members.onepeloton.com/...&classId=<32-hex>` where
+  classId = `peloton_ride_id`. Article HTML is bot-walled for curl — fetch via
+  WebFetch; wp-content images DO fetch with a browser UA.
+- Flow: build `{catalog:true, classes:[{n,title,instructor,ride_id,week,day}],
+  program_id, program_title, program_subtitle}` → dry-run (`commit:false`,
+  expect all "explicit") → `commit:true`. Writes peloton_classes (deduped;
+  real discipline) + programs/program_classes (with week/day).
+- Artwork: crop to landscape (`sips -c <h> <w> --cropOffset <y> <x>`), commit as
+  `img/programs/<id>.jpg`, set `programs.image_url` (repo-relative path). Hero
+  fallback chain: programs.image_url → first class ride still → instructor
+  photo → gradient. Official art renders as an <img> at natural size with NO
+  title overlay (the art carries the title) — don't reintroduce the overlay.
+- PeloBuddy articles can be STALE vs the current in-app program (Peloton swaps
+  re-aired classes/instructors). The app is ground truth: if a completed class
+  doesn't tick, re-verify that ride_id via the app's Share → Copy Link.
+- `program_classes.week/day` nullable — app groups by them when present
+  (multi-class days share a "Day N"), else falls back to 5-per-week slices.
