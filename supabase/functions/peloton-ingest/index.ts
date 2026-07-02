@@ -681,6 +681,7 @@ Deno.serve(async (req) => {
         const ok = d && !d.__error;
         return {
           n: c.n ?? idx + 1, title: c.title, instructor: c.instructor, duration_min: wantDur, air_date: c.air_date ?? null,
+          week: c.week ?? null, day: c.day ?? null,
           confidence: ok ? "explicit" : "explicit-error", ride_id: ok ? c.ride_id : null,
           matched: ok ? { title: d.title, air_time: d.original_air_time ? iso10(d.original_air_time) : null } : null,
           candidates: ok ? undefined : [{ error: d?.__error ?? "no details" }],
@@ -708,6 +709,7 @@ Deno.serve(async (req) => {
       }
       return {
         n: c.n ?? idx + 1, title: c.title, instructor: c.instructor, duration_min: wantDur, air_date: c.air_date ?? null,
+        week: c.week ?? null, day: c.day ?? null,
         confidence, ride_id: match?.id ?? null,
         matched: match ? { title: match.title, air_time: iso10(match.original_air_time) } : null,
         candidates: match ? undefined : pick.slice(0, 6).map((r: any) => ({ ride_id: r.id, title: r.title, air_time: iso10(r.original_air_time) })),
@@ -750,6 +752,7 @@ Deno.serve(async (req) => {
         const pcRows = results.filter((r) => r.ride_id).map((r) => ({
           program_id: programId, order_num: r.n, ride_id: r.ride_id,
           title: r.matched?.title ?? r.title, instructor: r.instructor, duration_min: r.duration_min,
+          week: r.week ?? null, day: r.day ?? null,
         }));
         if (pcRows.length) {
           const pcw = await restWrite("POST", `program_classes?on_conflict=program_id,order_num`, pcRows);

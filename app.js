@@ -44,7 +44,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.7.2';
+const APP_VERSION = 'Stride · v4.8';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -744,7 +744,7 @@ async function loadPrograms() {
     (classes || []).forEach(c => {
       (byProgram[c.program_id] = byProgram[c.program_id] || []).push({
         order: c.order_num, ride_id: c.ride_id, title: c.title, instructor: c.instructor, duration_min: c.duration_min,
-        image: imgByRide[c.ride_id] || null,
+        image: imgByRide[c.ride_id] || null, week: c.week || null, day: c.day || null,
       });
     });
     State.programs = (progs || []).map(p => ({ id: p.id, title: p.title, subtitle: p.subtitle, image_url: p.image_url || null, classes: byProgram[p.id] || [] }));
@@ -799,14 +799,22 @@ function programHeroStyle(p) {
   return `background-image:linear-gradient(to top, rgba(0,0,0,0.74), rgba(0,0,0,0.12)), url('${img}');background-size:cover;background-position:center ${art ? '50%' : '18%'};`;
 }
 
+// Classes for 0-based week index w: real week/day columns when the manifest
+// carries them (multi-class days, uneven weeks), else the legacy fixed slice.
+function programWeekClasses(p, w) {
+  if (p.classes.some(c => c.week)) return p.classes.filter(c => c.week === w + 1);
+  return p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK);
+}
 function programStats(p) {
   const done = State.programProgress[p.id] || new Set();
   const total = p.classes.length;
   const doneCount = p.classes.filter(c => done.has(c.ride_id)).length;
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
-  const weeks = Math.max(1, Math.ceil(total / PROGRAM_PER_WEEK));
+  const weeks = p.classes.some(c => c.week)
+    ? Math.max(...p.classes.map(c => c.week || 1))
+    : Math.max(1, Math.ceil(total / PROGRAM_PER_WEEK));
   const perWeekCounts = [];
-  for (let w = 0; w < weeks; w++) perWeekCounts.push(p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK).length);
+  for (let w = 0; w < weeks; w++) perWeekCounts.push(programWeekClasses(p, w).length);
   const durs = p.classes.map(c => c.duration_min).filter(d => d > 0);
   const status = doneCount === 0 ? 'notstarted' : (doneCount >= total ? 'completed' : 'inprogress');
   return {
@@ -935,12 +943,21 @@ function programCardHtml(p, s) {
   const btn = s.status === 'completed'
     ? `<button class="pd-class-btn" onclick="event.stopPropagation();openProgram('${p.id}')">Review program</button>`
     : `<button class="pd-class-btn" onclick="event.stopPropagation();startNextClass('${p.id}')">Start next class</button>`;
+  // Official art carries its own title text — render the image at its natural
+  // size and move the title into the card body (Peloton does the same).
+  const hero = p.image_url
+    ? `<div class="prog-hero art">
+        ${pill ? `<span class="prog-pill">${pill}</span>` : ''}
+        <img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}">
+      </div>`
+    : `<div class="prog-hero" style="${programHeroStyle(p)}">
+        ${pill ? `<span class="prog-pill">${pill}</span>` : ''}
+        <div class="prog-hero-title">${escapeHtml(p.title)}</div>
+      </div>`;
   return `<div class="prog-card" onclick="openProgram('${p.id}')">
-    <div class="prog-hero" style="${programHeroStyle(p)}">
-      ${pill ? `<span class="prog-pill">${pill}</span>` : ''}
-      <div class="prog-hero-title">${escapeHtml(p.title)}</div>
-    </div>
+    ${hero}
     <div class="prog-card-body">
+      ${p.image_url ? `<div class="prog-title">${escapeHtml(p.title)}</div>` : ''}
       <div class="prog-instr">${escapeHtml(ins.primary)}${ins.extra ? ` <span style="color:var(--ink-4);">· +${ins.extra} more</span>` : ''}</div>
       <div class="prog-count">${s.doneCount} of ${s.total} classes</div>
       <div class="prog-bar"><i style="width:${s.pct}%;"></i></div>
@@ -972,7 +989,7 @@ function renderProgramDetail() {
   const s = programStats(p);
   const done = State.programProgress[p.id] || new Set();
   const weekComplete = (w) => {
-    const cs = p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK);
+    const cs = programWeekClasses(p, w);
     return cs.length && cs.every(c => done.has(c.ride_id));
   };
   let tabs = `<button class="pd-tab ${State.programTab === 'overview' ? 'active' : ''}" onclick="switchProgramTab('overview')">Overview</button>`;
@@ -984,11 +1001,17 @@ function renderProgramDetail() {
   const startBar = nc
     ? `<div class="pd-startbar"><button class="pd-start-btn" onclick="openClassInfo('${p.id}','${nc.ride_id}')">▶ Start next class</button></div>`
     : `<div class="pd-startbar"><button class="pd-start-btn done" disabled>✓ Program complete</button></div>`;
+  const heroHtml = p.image_url
+    ? `<div class="pd-hero art">
+        <button class="pd-back" onclick="switchScreen('programs')" aria-label="Back">‹</button>
+        <img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}">
+      </div>`
+    : `<div class="pd-hero" style="${programHeroStyle(p)}">
+        <button class="pd-back" onclick="switchScreen('programs')" aria-label="Back">‹</button>
+        <div class="pd-hero-title">${escapeHtml(p.title)}</div>
+      </div>`;
   host.innerHTML = `
-    <div class="pd-hero" style="${programHeroStyle(p)}">
-      <button class="pd-back" onclick="switchScreen('programs')" aria-label="Back">‹</button>
-      <div class="pd-hero-title">${escapeHtml(p.title)}</div>
-    </div>
+    ${heroHtml}
     <div class="pd-tabs">${tabs}</div>
     <div class="pd-panel" id="pdPanel">${panel}</div>
     ${startBar}`;
@@ -1030,22 +1053,40 @@ function programWeekPanel(p, w) {
   const done = State.programProgress[p.id] || new Set();
   const nc = programNextClass(p);
   const grad = programGrad(p);
-  const cs = p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK);
+  const cs = programWeekClasses(p, w);
   if (!cs.length) return `<div class="tiny" style="padding:24px;text-align:center;color:var(--ink-4);">No classes in this week.</div>`;
-  return cs.map((c, idx) => {
+
+  const classCard = (c) => {
     const isDone = done.has(c.ride_id);
     const isNext = nc && c.ride_id === nc.ride_id;
     const badge = isDone ? `<span class="prog-pill done">✓ Completed</span>` : (isNext ? `<span class="prog-pill">Next Class</span>` : '');
-    return `<div class="pd-day">
-      <div class="pd-day-label">Day ${idx + 1}</div>
-      <div class="pd-class ${isDone ? 'is-done' : ''}" style="background:${grad};" onclick="openClassInfo('${p.id}','${c.ride_id}')">
-        ${badge}
-        <div class="pd-class-title">${escapeHtml(c.title)}</div>
-        <div class="pd-class-instr">${escapeHtml(c.instructor || '')}${c.duration_min ? ` · ${c.duration_min} min` : ''}</div>
-        <button class="pd-class-btn" onclick="event.stopPropagation();openClassInfo('${p.id}','${c.ride_id}')">${isDone ? 'View' : 'Start'}</button>
-      </div>
-    </div>`;
-  }).join('');
+    const meta = `
+      <div class="pd-class-title">${escapeHtml(c.title)}</div>
+      <div class="pd-class-instr">${escapeHtml(c.instructor || '')}${c.duration_min ? ` · ${c.duration_min} min` : ''}</div>
+      <button class="pd-class-btn" onclick="event.stopPropagation();openClassInfo('${p.id}','${c.ride_id}')">${isDone ? 'View' : 'Start'}</button>`;
+    // With a ride still: 16:9 image header (badge on the image), text below.
+    return c.image
+      ? `<div class="pd-class has-img ${isDone ? 'is-done' : ''}" onclick="openClassInfo('${p.id}','${c.ride_id}')">
+          <div class="pd-class-img" style="background-image:url('${escapeHtml(c.image)}')">${badge}</div>
+          <div class="pd-class-body">${meta}</div>
+        </div>`
+      : `<div class="pd-class ${isDone ? 'is-done' : ''}" style="background:${grad};" onclick="openClassInfo('${p.id}','${c.ride_id}')">
+          ${badge}${meta}
+        </div>`;
+  };
+
+  // Group into days: real day numbers when the manifest has them (multi-class
+  // days — e.g. Benchmark + Stretch — share one label), else one class per day.
+  const groups = [];
+  cs.forEach((c, idx) => {
+    const day = c.day || idx + 1;
+    if (groups.length && groups[groups.length - 1].day === day) groups[groups.length - 1].classes.push(c);
+    else groups.push({ day, classes: [c] });
+  });
+  return groups.map(g => `<div class="pd-day">
+    <div class="pd-day-label">Day ${g.day}</div>
+    ${g.classes.map(classCard).join('')}
+  </div>`).join('');
 }
 function openClassInfo(programId, rideId) {
   const p = State.programs.find(x => x.id === programId);
