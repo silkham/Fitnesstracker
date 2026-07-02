@@ -250,7 +250,18 @@ function extractMetrics(pg: any): Record<string, any> {
   if (r) { if (r.average_value != null) out.avg_resistance = Math.round(+r.average_value); if (r.max_value != null) out.max_resistance = Math.round(+r.max_value); }
   const sp = metBy.speed;
   if (sp) { const u = sp.display_unit ?? "kph"; if (sp.average_value != null) out.avg_speed_kph = toKph(+sp.average_value, u); if (sp.max_value != null) out.max_speed_kph = toKph(+sp.max_value, u); }
+  // Strive Score occasionally rides along on the performance_graph; the primary
+  // source is the workout object (see striveFrom).
+  if (pg.effort_zones?.total_effort_points != null) out.effort_points = round(+pg.effort_zones.total_effort_points, 1);
   return out;
+}
+
+// Strive Score = total effort points, an HR-based metric that only exists when
+// the member wore a heart-rate monitor. Peloton hangs it off the workout object
+// under effort_zones.total_effort_points (not the metric/summary slugs).
+function striveFrom(w: any): number | null {
+  const v = w?.effort_zones?.total_effort_points;
+  return (v != null && !isNaN(+v)) ? round(+v, 1) : null;
 }
 
 // ---- catalog/manifest-resolution helpers -------------------
@@ -649,6 +660,7 @@ Deno.serve(async (req) => {
         duration_min, calories: w.calories ?? null,
         ftp: w.ftp_info?.ftp ?? null, leaderboard_rank: w.leaderboard_rank ?? null, leaderboard_total: w.total_leaderboard_users ?? null,
         ...metrics,
+        effort_points: striveFrom(w) ?? (metrics as any).effort_points ?? null,
       };
 
       if (isKnown) {

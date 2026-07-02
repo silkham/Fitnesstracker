@@ -41,7 +41,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.5.2';
+const APP_VERSION = 'Stride · v4.5.3';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -953,16 +953,46 @@ function openClassInfo(programId, rideId) {
   const c = p.classes.find(x => x.ride_id === rideId);
   if (!c) return;
   const isDone = (State.programProgress[p.id] || new Set()).has(c.ride_id);
+
+  // Join to the member's actual completed workout(s) for this class — most recent
+  // take wins. (State.workouts is a rolling ~90-day window, so very old completions
+  // still tick the checkmark via programProgress but may not carry live metrics.)
+  const wk = State.workouts
+    .filter(w => w.peloton_ride_id === rideId && w.status === 'done')
+    .sort((a, b) => String(b.done_at || b.planned_for || '').localeCompare(String(a.done_at || a.planned_for || '')))[0] || null;
+
+  const tiles = [];
+  if (wk) {
+    if (wk.effort_points != null) tiles.push(['Strive', (+wk.effort_points).toFixed(1), '']);
+    if (wk.total_output_kj != null) tiles.push(['Output', Math.round(+wk.total_output_kj).toString(), 'kJ']);
+    else if (wk.avg_output_w != null) tiles.push(['Avg output', Math.round(+wk.avg_output_w).toString(), 'W']);
+    if (wk.calories != null) tiles.push(['Calories', Math.round(+wk.calories).toLocaleString(), 'kcal']);
+    if (wk.avg_hr != null) tiles.push(['Avg HR', Math.round(+wk.avg_hr).toString(), 'bpm']);
+    if (wk.distance_km != null) tiles.push(['Distance', (+wk.distance_km).toFixed(2), 'km']);
+  }
+  const metricsHtml = tiles.length ? `<div class="ci-metrics">${tiles.map(([lab, val, unit]) =>
+    `<div class="ci-metric"><b>${val}${unit ? `<span>${unit}</span>` : ''}</b><i>${lab}</i></div>`).join('')}</div>` : '';
+  // Strive is HR-based — call it out when the class was done but no strap was worn.
+  const striveNote = (wk && wk.effort_points == null)
+    ? `<div class="tiny" style="color:var(--ink-4);margin-bottom:16px;">Strive Score needs a heart-rate monitor — none was recorded for this class.</div>` : '';
+
+  const doneOn = wk && (wk.done_at || wk.planned_for) ? ` · ${shortDate(wk.done_at || wk.planned_for)}` : '';
+  const statusText = isDone
+    ? `Completed${doneOn}${tiles.length ? ' — your stats from this class.' : ' — synced from your Peloton history.'}`
+    : 'Not yet completed. Take this class in the Peloton app; it’ll tick off here after your next sync.';
+
   const html = `
     <div style="margin-bottom:14px;">
       <div class="tiny" style="color:var(--ink-4);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">${escapeHtml(p.title)} · Class ${c.order}</div>
       <div style="font-size:20px;font-weight:700;line-height:1.2;">${escapeHtml(c.title)}</div>
       <div class="tiny" style="color:var(--ink-3);margin-top:6px;">${escapeHtml(c.instructor || 'Various')}${c.duration_min ? ` · ${c.duration_min} min` : ''}</div>
     </div>
-    <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+    <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:${metricsHtml ? '14px' : '16px'};">
       <span style="width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:${isDone ? 'var(--accent)' : 'var(--paper-3)'};color:${isDone ? 'var(--accent-ink)' : 'var(--ink-4)'};">${isDone ? '✓' : '•'}</span>
-      <div class="tiny" style="color:var(--ink-3);">${isDone ? 'Completed — synced from your Peloton history.' : 'Not yet completed. Take this class in the Peloton app; it’ll tick off here after your next sync.'}</div>
+      <div class="tiny" style="color:var(--ink-3);">${statusText}</div>
     </div>
+    ${metricsHtml}
+    ${striveNote}
     <button class="btn primary block" onclick="closeSheet();switchScreen('exercise');">Go to Train to sync</button>`;
   openSheet('Class details', html);
 }

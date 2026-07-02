@@ -1378,3 +1378,10 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .pd-startbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom)); width: 100%; max-width: 480px; padding: 0 16px; z-index: 40; pointer-events: none; }
 .pd-start-btn { pointer-events: auto; width: 100%; border: none; border-radius: 999px; background: #fff; color: #0a0a0a; font-size: 16px; font-weight: 800; padding: 16px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
 .pd-start-btn.done { background: var(--paper-3); color: var(--ink-3); }
+
+/* class-details metrics grid (strive / output / calories / HR …) */
+.ci-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.ci-metric { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 12px; padding: 12px 8px; text-align: center; }
+.ci-metric b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.ci-metric b span { font-size: 12px; font-weight: 600; color: var(--ink-4); margin-left: 2px; }
+.ci-metric i { display: block; font-style: normal; font-size: 11px; color: var(--ink-4); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
