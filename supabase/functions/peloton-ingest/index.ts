@@ -644,9 +644,11 @@ Deno.serve(async (req) => {
     const idByName: Record<string, string> = {};
     for (const i of (insResp.data ?? [])) { nameById[i.id] = i.name; idByName[foldName(i.name)] = i.id; }
 
-    // page archived cycling rides for only the instructors we need
+    // page archived cycling rides only for classes lacking an explicit ride_id
+    // (an all-explicit manifest — e.g. classIds lifted from PeloBuddy links —
+    // skips the archive pull entirely; it's cycling-only and ~30 calls/instructor)
     const needIds = new Set<string>();
-    for (const c of classes) { const id = idByName[foldName(c.instructor)]; if (id) needIds.add(id); }
+    for (const c of classes) { if (c.ride_id) continue; const id = idByName[foldName(c.instructor)]; if (id) needIds.add(id); }
     const ridesByInstr: Record<string, any[]> = {};
     for (const id of needIds) {
       const acc: any[] = [];
@@ -717,15 +719,20 @@ Deno.serve(async (req) => {
     const programId = typeof reqBody?.program_id === "string" ? reqBody.program_id : null;
     if (commit) {
       const allRides = Object.values(ridesByInstr).flat();
-      const rows = results.filter((r) => r.ride_id).map((r) => {
-        const src = detailsById[r.ride_id!] ?? allRides.find((x: any) => x.id === r.ride_id)!;
-        return {
-          peloton_ride_id: r.ride_id, title: src.title, instructor: nameById[src.instructor_id] ?? r.instructor,
-          duration_min: Math.round((src.duration ?? 0) / 60), discipline: "cycling",
-          original_air_time: new Date(src.original_air_time * 1000).toISOString(),
-          image_url: src.image_url ?? null, difficulty: src.difficulty_rating_avg ?? null, synced_at: new Date().toISOString(),
-        };
-      });
+      // programs may schedule the same class (e.g. a stretch) at several slots —
+      // dedupe by ride_id or the single-batch upsert hits its PK twice
+      const seenRideIds = new Set<string>();
+      const rows = results
+        .filter((r) => r.ride_id && !seenRideIds.has(r.ride_id!) && (seenRideIds.add(r.ride_id!), true))
+        .map((r) => {
+          const src = detailsById[r.ride_id!] ?? allRides.find((x: any) => x.id === r.ride_id)!;
+          return {
+            peloton_ride_id: r.ride_id, title: src.title, instructor: nameById[src.instructor_id] ?? r.instructor,
+            duration_min: Math.round((src.duration ?? 0) / 60), discipline: src.fitness_discipline ?? "cycling",
+            original_air_time: new Date(src.original_air_time * 1000).toISOString(),
+            image_url: src.image_url ?? null, difficulty: src.difficulty_rating_avg ?? null, synced_at: new Date().toISOString(),
+          };
+        });
       if (rows.length) {
         const w = await restWrite("POST", `peloton_classes?on_conflict=peloton_ride_id`, rows);
         if (!w.ok) return json({ ok: false, error: w.err }, 500);
