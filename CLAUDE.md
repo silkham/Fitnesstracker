@@ -114,6 +114,21 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   the text search (which also matches instructor). Remove is now reachable from the
   preview sheet too (`removeUserProgram(pid, true)` stays on the Add screen).
 
+## Instructor tab + realtime rendering (SHIPPED v4.11)
+- **LANDMINE — realtime workout events are debounced, don't revert.** A Peloton
+  sync upserts many `workouts` rows; the realtime handler must call
+  `scheduleRealtimeRender()` (200ms debounce), NOT `renderAll()` per row — per-row
+  renders caused visible flashing on every focus (autoSyncIfDue on visibilitychange).
+- Live instructor schedule is cached in localStorage (`stride_instr_sched_v1`, 6h
+  TTL, keyed on a `favsSig()` of the favourites). `ensureInstructorSchedule()` is
+  the tab entry point (cache-first; refetch when stale or no future classes);
+  `renderInstructor` filters to `start_unix > now`. `saveMemberWorkouts` calls
+  `clearScheduleCache()` when favourites change. Manual "Refresh" forces a pull.
+- Favourite-instructor editor uses a `<select>` from the cached instructor
+  directory (`renderInstructorPicker`/`addEditInstructorFromSelect`) to avoid
+  spelling mistakes; falls back to the free-text input only if the directory
+  can't load.
+
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
   Every class links to `members.onepeloton.com/...&classId=<32-hex>` where
