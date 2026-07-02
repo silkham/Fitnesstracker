@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.12.4';
+const APP_VERSION = 'Stride · v4.12.5';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -5260,8 +5260,9 @@ async function analyzeMeal() {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      // claude-sonnet-4 (not 5): supports assistant prefill; no default extended-thinking block.
       // Prefill the assistant turn with "{" so the model MUST return a JSON object (no preamble/questions).
-      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 700, messages: [{ role: 'user', content }, { role: 'assistant', content: '{' }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 700, messages: [{ role: 'user', content }, { role: 'assistant', content: '{' }] }),
     });
     if (!r.ok) { const body = await r.text(); throw new Error('HTTP ' + r.status + ': ' + body.slice(0, 300)); }
     const data = await r.json();
