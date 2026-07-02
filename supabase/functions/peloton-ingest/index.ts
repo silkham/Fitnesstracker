@@ -431,8 +431,13 @@ Deno.serve(async (req) => {
       for (const i of (il.data ?? [])) instr[i.id] = { name: i.name ?? [i.first_name, i.last_name].filter(Boolean).join(" "), image: i.image_url ?? null };
     } catch (_e) { /* names may still arrive inline on the schedule payload */ }
 
-    // Try candidate live-schedule endpoints; keep the first with a non-empty data array.
-    const candidates = ["api/v3/ride/live", "api/ride/live?limit=100", "api/ride/live", "api/v2/ride/live", "api/all_live_class"];
+    // Peloton's schedule page hits v3/ride/live with a start/end window; WITHOUT it
+    // the endpoint returns only imminent/live-now classes (why we saw just one).
+    // Mirror the params the web app uses.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const winEnd = nowSec + 18 * 86400;  // ~18-day horizon (Peloton publishes ~14)
+    const q = `start=${nowSec}&end=${winEnd}&exclude_complete=true&exclude_live_in_studio_only=true&ignore_class_language_preferences=false`;
+    const candidates = [`api/v3/ride/live?${q}`, "api/v3/ride/live", "api/ride/live", "api/v2/ride/live"];
     let raw: any = null, used = "";
     const tried: any[] = [];
     for (const path of candidates) {
@@ -449,7 +454,6 @@ Deno.serve(async (req) => {
     const items = Array.isArray(raw.data) ? raw.data : (Array.isArray(raw) ? raw : []);
     const ridesMap: Record<string, any> = {};
     for (const rd of (raw.rides ?? [])) ridesMap[rd.id] = rd;  // some payloads carry a joined rides map
-    const nowSec = Math.floor(Date.now() / 1000);
 
     const classes: any[] = [];
     const seenNames = new Set<string>();
