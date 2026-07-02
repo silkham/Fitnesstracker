@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.12.1';
+const APP_VERSION = 'Stride · v4.12.2';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -5262,7 +5262,7 @@ async function analyzeMeal() {
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 700, messages: [{ role: 'user', content }] }),
     });
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) { const body = await r.text(); throw new Error('HTTP ' + r.status + ': ' + body.slice(0, 300)); }
     const data = await r.json();
     const text = (data.content && data.content[0] && data.content[0].text) || '';
     // Greedy outermost braces (tolerates code fences / nested objects the model may add).
@@ -5275,7 +5275,17 @@ async function analyzeMeal() {
     set('mlName', p.name); set('mlKcal', p.kcal); set('mlProtein', p.protein_g); set('mlCarbs', p.carbs_g); set('mlFat', p.fat_g);
     toast('Estimated — check the numbers');
   } catch (e) {
-    console.error(e); toast('Estimate failed — enter manually');
+    console.error(e);
+    const msg = String((e && e.message) || e);
+    let hint;
+    if (/401|authentication|invalid x-api-key|permission_error/i.test(msg)) hint = 'API key rejected — recheck it in You';
+    else if (/429|rate.?limit/i.test(msg)) hint = 'Rate limited — wait ~20s, then retry';
+    else if (/overloaded|529|503/i.test(msg)) hint = 'Claude busy — tap Estimate again';
+    else if (/404|not_found|model/i.test(msg)) hint = 'Model error: ' + msg.slice(0, 70);
+    else if (/credit|billing|quota/i.test(msg)) hint = 'Anthropic billing/credit issue — check console.anthropic.com';
+    else if (/no json/i.test(msg)) hint = 'Non-JSON reply — retry';
+    else hint = 'Estimate failed: ' + msg.slice(0, 90);
+    toast(hint);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✨ Estimate with AI'; }
   }
