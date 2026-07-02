@@ -129,6 +129,36 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   spelling mistakes; falls back to the free-text input only if the directory
   can't load.
 
+## Meal photo logging (SHIPPED v4.12)
+- **The Meals tab is now a per-member daily PHOTO FOOD LOG, not the weekly
+  planner.** The old planner (`renderMeals` week grid, `openMealEditor`,
+  `writeMealSlot`, `week_plans.slots`) is DEAD but left in place; `week_plans`
+  data is untouched. Do NOT reintroduce the planner UI. Meals screen = today's
+  4 slots (breakfast/lunch/dinner/snack) with a day-nav (`mealDayNav`,
+  forward-capped at today), rendered by the rewritten `renderMeals`.
+- **AI macro estimate is a CLIENT-SIDE Claude VISION call** — reuses the same
+  pattern as recipe `estimateMacros`: `State.settings.claude_api_key` +
+  `anthropic-dangerous-direct-browser-access` header, model **`claude-sonnet-5`**
+  (recipe `estimateMacros` still points at `claude-sonnet-4` — intentionally not
+  bumped). `analyzeMeal` sends `{type:'image',source:{base64}}` + prompt, parses
+  the JSON. No Edge Function. Works without a key (manual entry); estimate needs it.
+- **Phase 10 schema** (`supabase-phase10-meal-log.sql`, applied 2026-07-02):
+  `meal_logs` (household+member keyed, RLS on the household_memberships pattern,
+  `unique(member_id,log_date,slot)`, `state` in logged|skipped), 4 nullable
+  `members` target cols (`kcal_target/protein_target_g/carb_target_g/fat_target_g`),
+  and a PUBLIC `meal-photos` storage bucket (client uploads, unguessable
+  `{member_id}/{date}_{slot}_{ts}.jpg` paths, authenticated-write RLS).
+- **Metrics honesty landmine:** a day counts toward averages only if
+  `dayComplete()` (all 3 MAIN slots logged-or-skipped). Nutrition card
+  (`nutritionCard`, injected into BOTH `renderProgress` paths) averages over
+  complete days only — don't average raw days or half-logged days drag the trend
+  down. "Skipped" is a real state (ate nothing) distinct from unlogged.
+- Catch-up: `missedSlots()` = past-due unlogged main slots over `MEAL_CATCHUP_DAYS`
+  (3). Surfaced as `mealNudgeCard` on Today + `openMealCatchup` sheet. `mealTodayCard`
+  = Today's calories/protein summary. Photo upload is best-effort (feature works if
+  the bucket is missing — row just saves photo-less). Realtime `meal_logs` events
+  use `scheduleRealtimeRender()` (same debounce landmine as workouts).
+
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
   Every class links to `members.onepeloton.com/...&classId=<32-hex>` where
