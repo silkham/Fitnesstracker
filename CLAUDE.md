@@ -61,7 +61,7 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   `peloton-ingest-4h`) via db query — use it as the Bearer to drive the function
   from the CLI (e.g. the catalog branch).
 
-## In-app program import (v4.9 direction — supersedes manual onboarding for new programs)
+## In-app program import (SHIPPED v4.9, user-verified — supersedes manual onboarding)
 - `peloton-ingest` has two PeloBuddy branches (deployed 2026-07-02): `{programIndex:true}`
   scrapes pelobuddy.com/programs/ (~174 programs) into `program_index`;
   `{importProgram:{url}, commit?, program_id?}` parses a program article's classId
@@ -81,6 +81,9 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   "my programs" = user_programs join. Multi-user caveat: peloton-ingest sync is
   still hard-wired to ONE Peloton account — a second user's ticking needs per-user
   ingest work.
+- Two legacy programs have ids ≠ their index slugs — `PROGRAM_SLUG_ALIASES` in
+  app.js maps them (discover-your-power, stronger-you). New imports use id=slug;
+  keep that convention so no more aliases are ever needed.
 
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
