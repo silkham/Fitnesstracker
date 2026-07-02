@@ -163,17 +163,17 @@
     <div id="programAddContent"></div>
   </section>
 
-  <!-- ============== MEALS (simple weekly planner) ============== -->
+  <!-- ============== MEALS (photo-based daily food log) ============== -->
   <section class="screen" id="screen-meals">
     <div class="greeting" style="padding-bottom: 8px;">
       <h1 class="display"><em>Meals</em></h1>
-      <div class="greeting-sub">Plan the week's dinners</div>
+      <div class="greeting-sub">Snap what you eat</div>
     </div>
 
     <div class="week-nav">
-      <button class="week-nav-btn" onclick="mealWeekNav(-1)" aria-label="Previous week">‹</button>
-      <div class="week-nav-label" id="mealWeekLabel">—</div>
-      <button class="week-nav-btn" onclick="mealWeekNav(1)" aria-label="Next week">›</button>
+      <button class="week-nav-btn" onclick="mealDayNav(-1)" aria-label="Previous day">‹</button>
+      <div class="week-nav-label" id="mealDayLabel">—</div>
+      <button class="week-nav-btn" id="mealDayNext" onclick="mealDayNav(1)" aria-label="Next day">›</button>
     </div>
 
     <div id="mealsContent">

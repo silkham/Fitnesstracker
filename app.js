@@ -20,6 +20,8 @@ const State = {
   shoppingItems: [],
   mealPlan: null,       // week_plans row currently shown in the Meals tab
   mealWeekStart: null,  // ISO Monday of the meals tab's viewed week
+  mealLogViewDate: null,// ISO date shown in the Meals photo-log (default today)
+  mealLogs: [],         // meal_logs rows for the active member (last ~30 days)
   mealsTab: 'week',
   vaultCategory: 'dinner',
   personalSlots: [],    // meal_slots_personal rows for current user
@@ -50,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.11';
+const APP_VERSION = 'Stride · v4.12';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -347,6 +349,10 @@ async function loadAll() {
       State.strengthSets = setErr ? [] : (sets || []);
     } catch (e) { State.strengthSets = []; }
 
+    // load photo meal-log rows for the active member (resilient: table may not exist yet)
+    State.mealLogViewDate = todayISO();
+    await loadMealLogs();
+
     // load Peloton API-health heartbeat (single row, safe cols only). Resilient.
     await loadPelotonHealth();
 
@@ -443,10 +449,22 @@ function setupRealtime() {
     .on('postgres_changes',
       { event: '*', schema: 'public', table: 'workouts', filter: 'household_id=eq.' + State.householdId },
       (payload) => handleRealtime('workouts', payload))
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'meal_logs', filter: 'household_id=eq.' + State.householdId },
+      (payload) => handleRealtime('meal_logs', payload))
     .subscribe();
 }
 
 function handleRealtime(table, payload) {
+  if (table === 'meal_logs') {
+    if (payload.eventType === 'DELETE') {
+      State.mealLogs = State.mealLogs.filter(r => r.id !== payload.old.id);
+    } else if (payload.new && payload.new.member_id === State.activeMemberId) {
+      upsertLocalMealLog(payload.new);
+    }
+    scheduleRealtimeRender();
+    return;
+  }
   if (table === 'shopping_items') {
     if (payload.eventType === 'INSERT') {
       if (!State.shoppingItems.find(s => s.id === payload.new.id)) {
@@ -2337,31 +2355,11 @@ function renderToday() {
     </div>`;
   }
 
-  // ---- Today's meals — breakfast / lunch / dinner (dinner is the hero) ----
-  {
-    const dayslots = State.weekPlan?.slots?.[today] || {};
-    const rows = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner']].map(([key, label]) => {
-      const mealObj = normMealSlot(dayslots[key]);
-      const filled = mealObj && (mealObj.name || mealObj.url || mealObj.source);
-      const right = (mealObj && mealObj.url)
-        ? `<span class="meal-slot-link" onclick="event.stopPropagation();openMealUrl('${encodeURIComponent(mealObj.url)}')">↗</span>`
-        : `<span class="meal-slot-add">${filled ? '' : '+'}</span>`;
-      const val = filled
-        ? `${mealObj.name ? escapeHtml(mealObj.name) : '<span style="color:var(--ink-4);">(no name)</span>'}${mealObj.source ? `<span class="src">${escapeHtml(mealObj.source)}</span>` : ''}`
-        : 'Tap to add';
-      return `<div class="meal-slot ${key}" onclick="openTodayMeal('${key}')">
-        <span class="meal-slot-label">${label}</span>
-        <span class="meal-slot-val ${filled ? '' : 'empty'}">${val}</span>
-        ${right}
-      </div>`;
-    }).join('');
-    html += `<div class="card" style="padding:14px 16px;">
-      <div class="card-row" style="margin-bottom:6px;"><span class="eyebrow">Today's meals</span></div>
-      ${rows}
-    </div>`;
-  }
+  // ---- Today's food — photo log summary (calories + protein vs target) ----
+  html += mealTodayCard();
 
-  document.getElementById('todayContent').innerHTML = html;
+  // Catch-up nudge (missed meals in the last few days) rides at the top.
+  document.getElementById('todayContent').innerHTML = mealNudgeCard() + html;
 }
 
 // Open a meal editor for today, ensuring the meals tab is on the current week first.
@@ -2869,6 +2867,7 @@ function renderProgress() {
       `<button class="btn accent" onclick="openWeightEntry()">Log weight</button>`
     )}</div>`;
     html += trainingSectionHtml(m);
+    html += nutritionCard(m);
     root.innerHTML = html;
     return;
   }
@@ -2930,6 +2929,7 @@ function renderProgress() {
     </div>`;
   }).join('');
 
+  html += nutritionCard(m);
   root.innerHTML = html;
 }
 
@@ -5008,46 +5008,422 @@ function mealWeekRangeLabel(weekStart) {
   return `${fmt(start)} – ${fmt(end)}${rel ? `<span class="sub">${rel}</span>` : ''}`;
 }
 
-function renderMeals() {
-  const plan = State.mealPlan;
-  const weekStart = State.mealWeekStart;
-  const root = document.getElementById('mealsContent');
-  const labelEl = document.getElementById('mealWeekLabel');
-  if (!root) return;
-  if (!plan || !weekStart) { root.innerHTML = ''; return; }
-  if (labelEl) labelEl.innerHTML = mealWeekRangeLabel(weekStart);
+// ============================================================
+// MEALS · PHOTO FOOD LOG (v4.12) — snap what you eat, per member, per day
+// ============================================================
+const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'];
+const MEAL_SLOT_LABEL = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
+const MEAL_MAIN_SLOTS = ['breakfast', 'lunch', 'dinner'];               // required for a "complete" day
+const MEAL_SLOT_DUE_H = { breakfast: 10.5, lunch: 14.5, dinner: 21, snack: 24 }; // past-due hour (local)
+const MEAL_CATCHUP_DAYS = 3;    // today + 2 prior — the nudge window
+const MEAL_METRICS_DAYS = 30;   // history loaded for metrics
+const MEAL_SLOT_ICON = { breakfast: '☕', lunch: '🥗', dinner: '🍽', snack: '🍎' };
+const MEAL_VISION_PROMPT = `You are a nutrition estimator for a fitness app. From the food photo and/or the user's note, identify the meal and estimate nutrition for the portion actually shown or described. Return ONLY minified JSON, no prose or code fences: {"name":"short meal name","kcal":<int>,"protein_g":<int>,"carbs_g":<int>,"fat_g":<int>}. Estimate realistically; if unsure, still give your single best guess.`;
 
-  const slots = plan.slots || {};
+let _mealLog = null; // { date, slot, photoDataUrl, photoUrl, existing }
+
+async function loadMealLogs() {
+  try {
+    const mid = State.activeMemberId || (State.members[0] && State.members[0].id);
+    if (!mid) { State.mealLogs = []; return; }
+    const since = isoDateAddDays(todayISO(), -MEAL_METRICS_DAYS);
+    const { data, error } = await State.client
+      .from('meal_logs')
+      .select('*')
+      .eq('member_id', mid)
+      .gte('log_date', since)
+      .order('log_date', { ascending: false });
+    State.mealLogs = error ? [] : (data || []);
+  } catch (e) { State.mealLogs = []; }
+}
+
+function mealLogsFor(date) {
+  const o = {};
+  State.mealLogs.forEach(r => { if (r.log_date === date) o[r.slot] = r; });
+  return o;
+}
+function dayTotals(date) {
+  return State.mealLogs
+    .filter(r => r.log_date === date && r.state === 'logged')
+    .reduce((a, r) => ({
+      kcal: a.kcal + (+r.kcal || 0),
+      protein: a.protein + (+r.protein_g || 0),
+      carbs: a.carbs + (+r.carbs_g || 0),
+      fat: a.fat + (+r.fat_g || 0),
+    }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+}
+// A day is "complete" only if every main slot is logged or skipped — used to keep averages honest.
+function dayComplete(date) {
+  const byslot = mealLogsFor(date);
+  return MEAL_MAIN_SLOTS.every(s => byslot[s]);
+}
+// Past-due, unlogged main slots across the catch-up window.
+function missedSlots() {
+  const out = [];
   const today = todayISO();
-  const days = Array.from({ length: 7 }, (_, i) => isoDateAddDays(weekStart, i));
-  const order = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner']];
+  const now = new Date();
+  const nowH = now.getHours() + now.getMinutes() / 60;
+  for (let i = 0; i < MEAL_CATCHUP_DAYS; i++) {
+    const d = isoDateAddDays(today, -i);
+    const byslot = mealLogsFor(d);
+    MEAL_MAIN_SLOTS.forEach(s => {
+      if (byslot[s]) return;
+      const isToday = d === today;
+      if (!isToday || nowH >= MEAL_SLOT_DUE_H[s]) out.push({ date: d, slot: s });
+    });
+  }
+  return out;
+}
+function upsertLocalMealLog(row) {
+  if (!row) return;
+  const i = State.mealLogs.findIndex(r => r.id === row.id ||
+    (r.member_id === row.member_id && r.log_date === row.log_date && r.slot === row.slot));
+  if (i >= 0) State.mealLogs[i] = row; else State.mealLogs.push(row);
+}
+function isActiveScreen(name) {
+  const el = document.getElementById('screen-' + name);
+  return !!(el && el.classList.contains('active'));
+}
 
-  root.innerHTML = days.map(d => {
-    const isToday = d === today;
-    const dayslots = slots[d] || {};
-    const rows = order.map(([key, label]) => {
-      const mealObj = normMealSlot(dayslots[key]);
-      const filled = mealObj && (mealObj.name || mealObj.url || mealObj.source);
-      const right = (mealObj && mealObj.url)
-        ? `<span class="meal-slot-link" onclick="event.stopPropagation();openMealUrl('${encodeURIComponent(mealObj.url)}')">↗</span>`
-        : `<span class="meal-slot-add">${filled ? '' : '+'}</span>`;
-      const val = filled
-        ? `${mealObj.name ? escapeHtml(mealObj.name) : '<span style="color:var(--ink-4);">(no name)</span>'}${mealObj.source ? `<span class="src">${escapeHtml(mealObj.source)}</span>` : ''}`
-        : 'Tap to add';
-      return `<div class="meal-slot ${key}" onclick="openMealEditor('${d}','${key}')">
-        <span class="meal-slot-label">${label}</span>
-        <span class="meal-slot-val ${filled ? '' : 'empty'}">${val}</span>
-        ${right}
+function renderMeals() {
+  const root = document.getElementById('mealsContent');
+  if (!root) return;
+  const m = activeMember();
+  const today = todayISO();
+  const date = State.mealLogViewDate || (State.mealLogViewDate = today);
+
+  const labelEl = document.getElementById('mealDayLabel');
+  if (labelEl) labelEl.textContent = (date === today ? 'Today' : mealDayName(date)) + ' · ' + mealShortDate(date);
+  const nextBtn = document.getElementById('mealDayNext');
+  if (nextBtn) nextBtn.style.visibility = (date >= today) ? 'hidden' : 'visible';
+
+  const byslot = mealLogsFor(date);
+  const totals = dayTotals(date);
+  const nowH = new Date().getHours() + new Date().getMinutes() / 60;
+
+  let html = mealTotalsBar(m, totals, date);
+
+  html += MEAL_SLOTS.map(s => {
+    const row = byslot[s];
+    const label = MEAL_SLOT_LABEL[s];
+    if (row && row.state === 'logged') {
+      const macro = `<span class="ml-macros"><b>${+row.kcal || 0}</b> kcal · P${Math.round(+row.protein_g || 0)} C${Math.round(+row.carbs_g || 0)} F${Math.round(+row.fat_g || 0)}</span>`;
+      const thumb = row.photo_url
+        ? `<div class="ml-thumb" style="background-image:url('${escapeHtml(row.photo_url)}')"></div>`
+        : `<div class="ml-thumb ml-thumb-none">${MEAL_SLOT_ICON[s]}</div>`;
+      return `<div class="card ml-slot logged" onclick="openMealLogger('${date}','${s}')">
+        ${thumb}
+        <div class="ml-slot-body">
+          <div class="ml-slot-label">${label}</div>
+          <div class="ml-slot-name">${escapeHtml(row.name || '(logged)')}</div>
+          ${macro}
+        </div>
+        <span class="ml-chev">›</span>
       </div>`;
-    }).join('');
-    return `<div class="card meal-day ${isToday ? 'today' : ''}">
-      <div class="meal-day-head">
-        <span class="meal-day-name">${mealDayName(d)} <span class="date">${mealShortDate(d)}</span></span>
-        ${isToday ? '<span class="badge">Today</span>' : ''}
-      </div>
-      ${rows}
+    }
+    if (row && row.state === 'skipped') {
+      return `<div class="card ml-slot skipped" onclick="openMealLogger('${date}','${s}')">
+        <div class="ml-thumb ml-thumb-none">${MEAL_SLOT_ICON[s]}</div>
+        <div class="ml-slot-body"><div class="ml-slot-label">${label}</div><div class="ml-slot-name muted">Skipped</div></div>
+        <span class="ml-chev">›</span>
+      </div>`;
+    }
+    const overdue = (date < today) || (date === today && s !== 'snack' && nowH >= MEAL_SLOT_DUE_H[s]);
+    return `<div class="card ml-slot empty ${overdue ? 'overdue' : ''}" onclick="openMealLogger('${date}','${s}')">
+      <div class="ml-thumb ml-thumb-add">+</div>
+      <div class="ml-slot-body"><div class="ml-slot-label">${label}</div><div class="ml-slot-name muted">${overdue ? 'Not logged yet' : 'Tap to log'}</div></div>
     </div>`;
   }).join('');
+
+  root.innerHTML = html;
+}
+
+function mealTotalsBar(m, totals, date) {
+  const kcalT = m && m.kcal_target ? +m.kcal_target : null;
+  const proT = m && m.protein_target_g ? +m.protein_target_g : null;
+  const bar = (val, target, label, unit) => {
+    const pct = target ? Math.min(100, Math.round(val / target * 100)) : 0;
+    return `<div class="ml-tot">
+      <div class="ml-tot-num">${Math.round(val)}${target ? `<span class="ml-tot-target">/${target}</span>` : ''}<span class="ml-tot-unit">${unit}</span></div>
+      <div class="ml-tot-label">${label}</div>
+      ${target ? `<div class="ml-tot-bar"><span style="width:${pct}%"></span></div>` : ''}
+    </div>`;
+  };
+  const incomplete = (date < todayISO()) && !dayComplete(date);
+  return `<div class="card ml-totals">
+    <div class="ml-tot-grid">
+      ${bar(totals.kcal, kcalT, 'calories', '')}
+      ${bar(totals.protein, proT, 'protein', 'g')}
+    </div>
+    <div class="ml-tot-macros"><span>Carbs ${Math.round(totals.carbs)}g</span><span>Fat ${Math.round(totals.fat)}g</span>${incomplete ? '<span class="ml-incomplete">incomplete day</span>' : ''}</div>
+  </div>`;
+}
+
+function mealDayNav(delta) {
+  const today = todayISO();
+  const floor = isoDateAddDays(today, -MEAL_METRICS_DAYS);
+  let d = isoDateAddDays(State.mealLogViewDate || today, delta);
+  if (d > today) d = today;
+  if (d < floor) d = floor;
+  State.mealLogViewDate = d;
+  renderMeals();
+}
+
+function openMealLogger(date, slot) {
+  const existing = mealLogsFor(date)[slot] || null;
+  _mealLog = { date, slot, photoDataUrl: null, photoUrl: (existing && existing.photo_url) || null, existing: (existing && existing.id) || null };
+  const label = MEAL_SLOT_LABEL[slot];
+  const val = (k) => (existing && existing[k] != null) ? existing[k] : '';
+  const preview = _mealLog.photoUrl ? `<div class="ml-photo-preview" style="background-image:url('${escapeHtml(_mealLog.photoUrl)}')"></div>` : '';
+  const html = `
+    <div id="mlPhotoWrap">${preview}</div>
+    <label class="btn ghost block" style="margin-bottom:12px;">
+      ${_mealLog.photoUrl ? 'Retake / change photo' : '📷 Take or choose a photo'}
+      <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="onMealPhoto(this)">
+    </label>
+    <div class="field">
+      <label class="field-label">Note (optional)</label>
+      <textarea class="input" id="mlNote" rows="2" placeholder="e.g. chicken salad, big bowl">${escapeHtml(val('note'))}</textarea>
+    </div>
+    <button class="btn accent block" id="mlAnalyzeBtn" onclick="analyzeMeal()" style="margin-bottom:16px;">✨ Estimate with AI</button>
+    <div class="field"><label class="field-label">Name</label><input class="input" id="mlName" value="${escapeHtml(String(val('name')))}"></div>
+    <div class="field input-row">
+      <div><label class="field-label">Calories</label><input class="input" id="mlKcal" type="number" inputmode="numeric" value="${escapeHtml(String(val('kcal')))}"></div>
+      <div><label class="field-label">Protein (g)</label><input class="input" id="mlProtein" type="number" inputmode="numeric" value="${escapeHtml(String(val('protein_g')))}"></div>
+    </div>
+    <div class="field input-row">
+      <div><label class="field-label">Carbs (g)</label><input class="input" id="mlCarbs" type="number" inputmode="numeric" value="${escapeHtml(String(val('carbs_g')))}"></div>
+      <div><label class="field-label">Fat (g)</label><input class="input" id="mlFat" type="number" inputmode="numeric" value="${escapeHtml(String(val('fat_g')))}"></div>
+    </div>
+    <div class="btn-row" style="margin-top:18px;"><button class="btn accent block" onclick="saveMealLog()">Save</button></div>
+    <div class="btn-row" style="margin-top:8px;gap:8px;">
+      <button class="btn ghost block" onclick="skipMealSlot()">Mark skipped</button>
+      ${existing ? `<button class="btn danger block" onclick="deleteMealLog()">Delete</button>` : ''}
+    </div>
+  `;
+  openSheet(`${date === todayISO() ? 'Today' : mealDayName(date)} · ${label}`, html);
+}
+
+async function onMealPhoto(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    const dataUrl = await compressImage(file, 1024, 0.72);
+    _mealLog.photoDataUrl = dataUrl;
+    const wrap = document.getElementById('mlPhotoWrap');
+    if (wrap) wrap.innerHTML = `<div class="ml-photo-preview" style="background-image:url('${dataUrl}')"></div>`;
+  } catch (e) { toast('Could not read that photo'); }
+}
+
+function compressImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w >= h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+      else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+function dataURLtoBlob(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  const mime = dataUrl.slice(5, dataUrl.indexOf(';'));
+  const bin = atob(dataUrl.slice(comma + 1));
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime || 'image/jpeg' });
+}
+
+async function analyzeMeal() {
+  const key = State.settings && State.settings.claude_api_key;
+  if (!key) { toast('Add a Claude API key in You → Claude API key'); return; }
+  const note = (document.getElementById('mlNote').value || '').trim();
+  const photo = _mealLog.photoDataUrl;
+  if (!photo && !note) { toast('Add a photo or a note first'); return; }
+  const btn = document.getElementById('mlAnalyzeBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Estimating…'; }
+  try {
+    const content = [];
+    if (photo) {
+      const media = photo.slice(5, photo.indexOf(';')) || 'image/jpeg';
+      content.push({ type: 'image', source: { type: 'base64', media_type: media, data: photo.slice(photo.indexOf(',') + 1) } });
+    }
+    content.push({ type: 'text', text: MEAL_VISION_PROMPT + (note ? `\n\nUser note: ${note}` : '') });
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 400, messages: [{ role: 'user', content }] }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    const text = (data.content && data.content[0] && data.content[0].text) || '';
+    const match = text.match(/\{[\s\S]*?\}/);
+    if (!match) throw new Error('no json');
+    const p = JSON.parse(match[0]);
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    set('mlName', p.name); set('mlKcal', p.kcal); set('mlProtein', p.protein_g); set('mlCarbs', p.carbs_g); set('mlFat', p.fat_g);
+    toast('Estimated — check the numbers');
+  } catch (e) {
+    console.error(e); toast('Estimate failed — enter manually');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Estimate with AI'; }
+  }
+}
+
+async function saveMealLog() {
+  const { date, slot } = _mealLog;
+  const m = activeMember();
+  if (!m) return;
+  const num = (id) => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+  const name = (document.getElementById('mlName').value || '').trim();
+  const note = (document.getElementById('mlNote').value || '').trim();
+  const kc = num('mlKcal');
+  const row = {
+    household_id: State.householdId, member_id: m.id, log_date: date, slot,
+    state: 'logged',
+    name: name || null,
+    kcal: kc != null ? Math.round(kc) : null,
+    protein_g: num('mlProtein'), carbs_g: num('mlCarbs'), fat_g: num('mlFat'),
+    note: note || null,
+    updated_at: new Date().toISOString(),
+  };
+  closeSheet();
+  setSync('syncing', 'Saving');
+  if (_mealLog.photoDataUrl) {
+    try {
+      const path = `${m.id}/${date}_${slot}_${Date.now()}.jpg`;
+      const up = await State.client.storage.from('meal-photos').upload(path, dataURLtoBlob(_mealLog.photoDataUrl), { contentType: 'image/jpeg', upsert: true });
+      if (!up.error) row.photo_url = State.client.storage.from('meal-photos').getPublicUrl(path).data.publicUrl;
+    } catch (e) { /* feature still works without the bucket — keep the row photo-less */ }
+  } else if (_mealLog.photoUrl) {
+    row.photo_url = _mealLog.photoUrl; // preserve existing photo on an edit
+  }
+  const { data, error } = await State.client.from('meal_logs')
+    .upsert(row, { onConflict: 'member_id,log_date,slot' }).select().single();
+  if (error) { setSync('offline', 'Error'); toast('Save failed'); return; }
+  upsertLocalMealLog(data);
+  setSync('synced', 'Saved'); toast('Logged');
+  renderMeals(); renderToday(); if (isActiveScreen('progress')) renderProgress();
+}
+
+async function skipMealSlot() {
+  const { date, slot } = _mealLog;
+  const m = activeMember();
+  if (!m) return;
+  closeSheet();
+  setSync('syncing', 'Saving');
+  const row = { household_id: State.householdId, member_id: m.id, log_date: date, slot, state: 'skipped', name: null, kcal: null, protein_g: null, carbs_g: null, fat_g: null, note: null, photo_url: null, updated_at: new Date().toISOString() };
+  const { data, error } = await State.client.from('meal_logs').upsert(row, { onConflict: 'member_id,log_date,slot' }).select().single();
+  if (error) { setSync('offline', 'Error'); toast('Save failed'); return; }
+  upsertLocalMealLog(data);
+  setSync('synced', 'Saved'); toast('Marked skipped');
+  renderMeals(); renderToday();
+}
+
+async function deleteMealLog() {
+  const id = _mealLog.existing;
+  if (!id) { closeSheet(); return; }
+  closeSheet();
+  setSync('syncing', 'Saving');
+  const { error } = await State.client.from('meal_logs').delete().eq('id', id);
+  if (error) { setSync('offline', 'Error'); toast('Delete failed'); return; }
+  State.mealLogs = State.mealLogs.filter(r => r.id !== id);
+  setSync('synced', 'Saved'); toast('Removed');
+  renderMeals(); renderToday();
+}
+
+// ---- Today-screen surfaces ----
+function mealNudgeCard() {
+  const missed = missedSlots();
+  if (!missed.length) return '';
+  return `<div class="card ml-nudge tappable" onclick="openMealCatchup()">
+    <div class="card-row" style="margin-bottom:4px;"><span class="eyebrow">Catch up</span><span class="ml-nudge-count">${missed.length}</span></div>
+    <div class="wc-title" style="font-size:15px;">${missed.length} meal${missed.length > 1 ? 's' : ''} to log</div>
+    <div class="wc-sub">Tap to log or skip the last few days</div>
+  </div>`;
+}
+function mealTodayCard() {
+  const m = activeMember();
+  const date = todayISO();
+  const totals = dayTotals(date);
+  const byslot = mealLogsFor(date);
+  const loggedCount = MEAL_SLOTS.filter(s => byslot[s]).length;
+  const kcalT = m && m.kcal_target ? +m.kcal_target : null;
+  const proT = m && m.protein_target_g ? +m.protein_target_g : null;
+  if (loggedCount === 0 && !kcalT) {
+    return `<div class="card tappable" style="padding:14px 16px;" onclick="switchScreen('meals')">
+      <div class="card-row" style="margin-bottom:4px;"><span class="eyebrow">Today's food</span></div>
+      <div class="wc-sub">Snap your meals to track calories &amp; protein</div>
+    </div>`;
+  }
+  const chip = (v, t, label, unit) => `<div class="mtoday-chip"><div class="mtoday-num">${Math.round(v)}${t ? `<span class="mtoday-target">/${t}</span>` : ''}<span class="mtoday-unit">${unit}</span></div><div class="mtoday-label">${label}</div></div>`;
+  return `<div class="card tappable" style="padding:14px 16px;" onclick="switchScreen('meals')">
+    <div class="card-row" style="margin-bottom:8px;"><span class="eyebrow">Today's food</span><span class="tiny" style="color:var(--ink-4);">${loggedCount}/4 logged</span></div>
+    <div class="mtoday-grid">
+      ${chip(totals.kcal, kcalT, 'calories', '')}
+      ${chip(totals.protein, proT, 'protein', 'g')}
+    </div>
+  </div>`;
+}
+function openMealCatchup() {
+  const missed = missedSlots();
+  if (!missed.length) { toast('All caught up'); closeSheet(); return; }
+  const rows = missed.map(({ date, slot }) => {
+    const day = date === todayISO() ? 'Today' : mealDayName(date);
+    return `<div class="card ml-catchup-row">
+      <div><div class="ml-slot-label">${day}</div><div class="ml-slot-name">${MEAL_SLOT_LABEL[slot]}</div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn accent" style="padding:8px 14px;" onclick="closeSheet();openMealLogger('${date}','${slot}')">Log</button>
+        <button class="btn ghost" style="padding:8px 12px;" onclick="quickSkip('${date}','${slot}')">Skip</button>
+      </div>
+    </div>`;
+  }).join('');
+  openSheet('Catch up', rows);
+}
+async function quickSkip(date, slot) {
+  const m = activeMember();
+  if (!m) return;
+  const row = { household_id: State.householdId, member_id: m.id, log_date: date, slot, state: 'skipped', updated_at: new Date().toISOString() };
+  const { data, error } = await State.client.from('meal_logs').upsert(row, { onConflict: 'member_id,log_date,slot' }).select().single();
+  if (error) { toast('Failed'); return; }
+  upsertLocalMealLog(data);
+  toast('Skipped'); renderToday();
+  if (missedSlots().length) openMealCatchup(); else closeSheet();
+}
+
+// ---- Progress-screen nutrition metrics ----
+function nutritionCard(m) {
+  if (!State.mealLogs.some(r => r.state === 'logged')) return '';
+  const days = [];
+  for (let i = 0; i < 14; i++) { const d = isoDateAddDays(todayISO(), -i); if (dayComplete(d)) days.push(d); }
+  let avgK = null, avgP = null;
+  if (days.length) {
+    const sums = days.map(dayTotals);
+    avgK = Math.round(sums.reduce((a, s) => a + s.kcal, 0) / days.length);
+    avgP = Math.round(sums.reduce((a, s) => a + s.protein, 0) / days.length);
+  }
+  const kcalT = m && m.kcal_target ? +m.kcal_target : null;
+  const today = todayISO();
+  const inK = Math.round(dayTotals(today).kcal);
+  const outK = Math.round(State.workouts
+    .filter(w => w.member_id === m.id && w.planned_for === today && w.status === 'done')
+    .reduce((a, w) => a + (+w.calories || 0), 0));
+  return `<div class="card" style="margin-top:14px;">
+    <div class="card-row" style="margin-bottom:10px;"><span class="eyebrow">Nutrition</span><span class="tiny" style="color:var(--ink-4);">${days.length ? days.length + 'd complete' : 'log full days for averages'}</span></div>
+    <div class="stat-grid" style="margin:0;">
+      <div class="stat-tile"><div class="stat-num">${avgK != null ? avgK : '—'}${kcalT && avgK != null ? `<span class="frac"> /${kcalT}</span>` : ''}</div><div class="stat-label">avg daily calories</div></div>
+      <div class="stat-tile"><div class="stat-num"><span class="accent">${avgP != null ? avgP : '—'}</span><span class="frac">g</span></div><div class="stat-label">avg daily protein</div></div>
+    </div>
+    <div class="ml-inout"><span>Today in <b>${inK}</b></span><span>burned <b>${outK}</b></span><span>net <b>${inK - outK}</b></span></div>
+  </div>`;
 }
 
 function openMealUrl(enc) {
@@ -5368,6 +5744,14 @@ function openMemberEditor(memberId) {
         </div>
       </button>
 
+      <button class="card tappable" onclick="openMemberEditorNutrition('${memberId}')" style="text-align:left;background:var(--card);border:1px solid var(--line);">
+        <div class="card-eyebrow"><span class="eyebrow">Nutrition targets</span></div>
+        <div style="margin-top:6px;">
+          ${summary('Calories / day', m.kcal_target ? m.kcal_target + ' kcal' : 'Not set')}
+          ${summary('Protein / day', m.protein_target_g ? m.protein_target_g + ' g' : 'Not set')}
+        </div>
+      </button>
+
       <button class="card tappable" onclick="openMemberEditorWorkouts('${memberId}')" style="text-align:left;background:var(--card);border:1px solid var(--line);">
         <div class="card-eyebrow"><span class="eyebrow">Workouts</span></div>
         <div style="margin-top:6px;">
@@ -5429,6 +5813,38 @@ async function saveMemberBasics(id) {
     life_goal_date: document.getElementById('mGoalDate').value || null,
     weight_start_kg: parseFloat(document.getElementById('mStart').value) || null,
     weight_goal_kg: parseFloat(document.getElementById('mGoalW').value) || null,
+  };
+  await saveMemberPayload(id, payload);
+  openMemberEditor(id);
+}
+
+// --- SUB-SHEET: NUTRITION TARGETS ---
+function openMemberEditorNutrition(memberId) {
+  const m = State.members.find(x => x.id === memberId);
+  if (!m) return;
+  const html = `
+    <button class="btn ghost" style="margin-bottom:14px;padding:6px 10px;font-size:13px;" onclick="openMemberEditor('${memberId}')">← Back</button>
+    <div class="tiny" style="color:var(--ink-3);margin-bottom:14px;line-height:1.5;">Daily targets for the Meals log. Leave blank to hide a target. A rough cut for fat loss: protein ≈ 1.6–2.2 g per kg of bodyweight.</div>
+    <div class="field input-row">
+      <div><label class="field-label">Calories / day</label><input class="input" id="mKcalT" type="number" inputmode="numeric" placeholder="e.g. 2100" value="${m.kcal_target || ''}"></div>
+      <div><label class="field-label">Protein (g)</label><input class="input" id="mProtT" type="number" inputmode="numeric" placeholder="e.g. 160" value="${m.protein_target_g || ''}"></div>
+    </div>
+    <div class="field input-row">
+      <div><label class="field-label">Carbs (g)</label><input class="input" id="mCarbT" type="number" inputmode="numeric" placeholder="optional" value="${m.carb_target_g || ''}"></div>
+      <div><label class="field-label">Fat (g)</label><input class="input" id="mFatT" type="number" inputmode="numeric" placeholder="optional" value="${m.fat_target_g || ''}"></div>
+    </div>
+    <div class="btn-row" style="margin-top:18px;"><button class="btn primary block" onclick="saveMemberNutrition('${memberId}')">Save</button></div>
+  `;
+  openSheet('Nutrition targets · ' + escapeHtml(m.display_name), html);
+}
+
+async function saveMemberNutrition(id) {
+  const intOrNull = (el) => { const v = parseInt(document.getElementById(el).value, 10); return isNaN(v) ? null : v; };
+  const payload = {
+    kcal_target: intOrNull('mKcalT'),
+    protein_target_g: intOrNull('mProtT'),
+    carb_target_g: intOrNull('mCarbT'),
+    fat_target_g: intOrNull('mFatT'),
   };
   await saveMemberPayload(id, payload);
   openMemberEditor(id);
