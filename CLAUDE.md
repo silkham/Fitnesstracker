@@ -61,6 +61,27 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   `peloton-ingest-4h`) via db query — use it as the Bearer to drive the function
   from the CLI (e.g. the catalog branch).
 
+## In-app program import (v4.9 direction — supersedes manual onboarding for new programs)
+- `peloton-ingest` has two PeloBuddy branches (deployed 2026-07-02): `{programIndex:true}`
+  scrapes pelobuddy.com/programs/ (~174 programs) into `program_index`;
+  `{importProgram:{url}, commit?, program_id?}` parses a program article's classId
+  links (+ best-effort Week/Day headings) and falls through to the catalog branch.
+  Both dry-run by default; `commit:true` writes. program_id defaults to the article slug.
+- **PeloBuddy is Cloudflare-JS-challenge-walled for local curl (even with full browser
+  headers) but serves real HTML to a plain Deno fetch with a browser UA from Supabase
+  egress IPs.** Probe/import from the edge, not from this machine.
+- Import copies the article og:image into the public `program-art` storage bucket and
+  sets `programs.image_url` (absolute URL). Import never nulls out curated artwork
+  (image_url only included in the upsert when art was fetched).
+- The function accepts EITHER the INGEST_SECRET or any valid Supabase user JWT
+  (verified via /auth/v1/user) — the app can trigger import without shipping secrets.
+- Phase 8 schema (applied 2026-07-02): `program_index` (RLS off, shared catalog),
+  `user_programs` (per-user, RLS auth.uid(), user_id defaults to auth.uid()),
+  `program-art` bucket. programs/program_classes stay RLS-off shared catalog;
+  "my programs" = user_programs join. Multi-user caveat: peloton-ingest sync is
+  still hard-wired to ONE Peloton account — a second user's ticking needs per-user
+  ingest work.
+
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
   Every class links to `members.onepeloton.com/...&classId=<32-hex>` where

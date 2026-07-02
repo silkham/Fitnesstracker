@@ -310,7 +310,7 @@ Deno.serve(async (req) => {
   let reqBody: any = {};
   try { reqBody = await req.json(); } catch { /* empty body ok */ }
   const force = reqBody?.force === true;
-  const catalog = reqBody?.catalog === true;
+  let catalog = reqBody?.catalog === true; // importProgram flips this to reuse the catalog branch
   const MEMBER_ID = Deno.env.get("MEMBER_ID")!;
   const HOUSEHOLD_ID = Deno.env.get("HOUSEHOLD_ID")!;
   const EMAIL = Deno.env.get("PELOTON_EMAIL") ?? "";
@@ -327,6 +327,76 @@ Deno.serve(async (req) => {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${q}`, init);
     return { ok: r.ok, status: r.status, err: r.ok ? null : await r.text() };
   };
+
+  // ============================================================
+  // PROGRAM INDEX — scrape pelobuddy.com/programs/ into program_index (the
+  // app's Add-a-program search source: slug + title + article_url only; full
+  // manifests are imported on demand via importProgram). Needs no Peloton
+  // auth, so it short-circuits before the Auth0 login and the health stamp.
+  // PeloBuddy is Cloudflare-walled for curl-ish clients but serves real HTML
+  // to a browser UA from Supabase egress IPs (probe-verified 2026-07-02).
+  // POST { programIndex:true, commit?:bool } — dry by default.
+  // ============================================================
+  const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+  const pbHeaders = {
+    "User-Agent": BROWSER_UA,
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-GB,en;q=0.9",
+  };
+  const decodeEnt = (s: string) => s
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+    .replace(/&#8217;/g, "’").replace(/&#8216;/g, "‘")
+    .replace(/&#8211;/g, "–").replace(/&#8212;/g, "—")
+    .replace(/&#8220;/g, "“").replace(/&#8221;/g, "”")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
+
+  if (reqBody?.programIndex === true) {
+    const r = await fetch("https://www.pelobuddy.com/programs/", { headers: pbHeaders, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) return json({ ok: false, error: `programIndex: index fetch ${r.status}` }, 502);
+    let html = await r.text();
+    if (reqBody?.debug === true) {
+      const probe = (needle: string) => html.indexOf(needle);
+      const h = probe("hannah-corbins-stretching-program");
+      return json({
+        ok: true, debug: true, htmlLen: html.length,
+        markers: {
+          entryContent: probe("entry-content"), main: probe("<main"), article: probe("<article"),
+          nav: probe("<nav"), header: probe("<header"), footer: probe("<footer"), aside: probe("<aside"),
+          comments: probe("id=\"comments\""), hannah: h,
+        },
+        aroundHannah: h >= 0 ? html.slice(Math.max(0, h - 400), h + 200) : null,
+      });
+    }
+    // The page has no entry-content/main/article wrappers (debug-verified
+    // 2026-07-02): program links are <li><a href="/slug/"> items in <ul> lists
+    // under <h3> headings ("List of Current Peloton Programs…", split
+    // strength, etc.), all before <footer>; the site menu links sit above the
+    // first such heading. Slice heading→footer, then only take li-anchors.
+    const start = html.search(/<h[23][^>]*>[^<]*Program/i);
+    const end = html.indexOf("<footer");
+    if (start > 0) html = html.slice(start, end > start ? end : undefined);
+    const skip = new Set(["programs", "about", "contact", "blog", "privacy-policy", "feed", "shop", "cart", "category", "tag", "author", "wp-content", "wp-admin", "news", "tv"]);
+    const seen = new Map<string, string>();
+    const aRe = /<li[^>]*>\s*<a[^>]+href="(?:https?:\/\/(?:www\.)?pelobuddy\.com)?\/([a-z0-9-]+)\/?(?:[?#][^"]*)?"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = aRe.exec(html))) {
+      const slug = m[1].toLowerCase();
+      const text = decodeEnt(m[2].replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim();
+      if (skip.has(slug) || !text || text.length < 4) continue;
+      if (!seen.has(slug)) seen.set(slug, text);
+    }
+    const rows = [...seen.entries()].map(([slug, title]) => ({
+      slug, title, article_url: `https://www.pelobuddy.com/${slug}/`, scraped_at: new Date().toISOString(),
+    }));
+    const commit = reqBody?.commit === true;
+    let committed = 0;
+    if (commit && rows.length) {
+      const w = await restWrite("POST", `program_index?on_conflict=slug`, rows);
+      if (!w.ok) return json({ ok: false, error: w.err }, 500);
+      committed = rows.length;
+    }
+    return json({ ok: true, programIndex: true, commit, committed, total: rows.length, sample: rows.slice(0, 10) });
+  }
 
   // ---- API-health heartbeat (layer 1) -----------------------
   // Stamp the attempt, capture the prior fail streak, then run the whole sync
@@ -620,6 +690,97 @@ Deno.serve(async (req) => {
   }
 
   // ============================================================
+  // IMPORT PROGRAM — fetch a PeloBuddy program article, parse its
+  // members.onepeloton.com classId links into an explicit-id manifest, then
+  // FALL THROUGH to the catalog branch below (ride details, dedupe,
+  // programs/program_classes upserts). Artwork: the article's og:image is
+  // copied into the program-art bucket (commit only) and lands on
+  // programs.image_url. Week/day: nearest preceding "Week N"/"Day N" text,
+  // best effort — nulls fall back to 5-per-week slices in the app.
+  // POST { importProgram:{ url }, commit?:bool, program_id? (default: slug) }
+  // ============================================================
+  let importMeta: any = null;
+  if (reqBody?.importProgram && typeof reqBody.importProgram === "object") {
+    const artUrl = String(reqBody.importProgram.url ?? "");
+    const um = artUrl.match(/^https:\/\/(?:www\.)?pelobuddy\.com\/([a-z0-9-]+)\/?$/i);
+    if (!um) return json({ ok: false, error: "importProgram: url must be a pelobuddy.com article" }, 400);
+    const slug = um[1].toLowerCase();
+    const ar = await fetch(artUrl, { headers: pbHeaders, signal: AbortSignal.timeout(20000) });
+    if (!ar.ok) return json({ ok: false, error: `importProgram: article fetch ${ar.status}` }, 502);
+    const html = await ar.text();
+
+    const metaTag = (p: string) =>
+      html.match(new RegExp(`<meta[^>]+property=["']${p}["'][^>]+content=["']([^"']*)["']`, "i"))?.[1]
+      ?? html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+property=["']${p}["']`, "i"))?.[1] ?? null;
+    // Prefer the curated index title ("7 Days of Stretching with Hannah
+    // Corbin") over the article headline; fall back to og:title with the
+    // site-name suffix stripped.
+    const idxRows = await restGet(`program_index?slug=eq.${slug}&select=title&limit=1`);
+    let title = (Array.isArray(idxRows) && idxRows[0]?.title) ? String(idxRows[0].title)
+      : (metaTag("og:title") ?? html.match(/<title>([^<]*)/i)?.[1] ?? slug);
+    title = decodeEnt(title).replace(/\s*[-–—|·]\s*(Pelo(?:ton)?\s?Buddy|pelobuddy\.com).*$/i, "").trim();
+    const subtitle = metaTag("og:description") ? decodeEnt(metaTag("og:description")!).trim() : null;
+    const ogImage = metaTag("og:image");
+
+    // Walk the article linearly: each classId link picks up the nearest
+    // preceding Week/Day heading. Day-only articles (one-week programs)
+    // normalize to week 1.
+    type Mark = { pos: number; kind: "week" | "day" | "cls"; val: number | string };
+    const marks: Mark[] = [];
+    for (const mm of html.matchAll(/\bWeek\s+(\d+)/gi)) marks.push({ pos: mm.index!, kind: "week", val: +mm[1] });
+    for (const mm of html.matchAll(/\bDay\s+(\d+)/gi)) marks.push({ pos: mm.index!, kind: "day", val: +mm[1] });
+    for (const mm of html.matchAll(/classId=([0-9a-fA-F]{32})/g)) marks.push({ pos: mm.index!, kind: "cls", val: mm[1].toLowerCase() });
+    marks.sort((a, b) => a.pos - b.pos);
+    const sawWeek = marks.some((x) => x.kind === "week");
+    const sawDay = marks.some((x) => x.kind === "day");
+    let curWeek: number | null = null, curDay: number | null = null;
+    const slots: { ride_id: string; week: number | null; day: number | null }[] = [];
+    for (const x of marks) {
+      if (x.kind === "week") { curWeek = x.val as number; curDay = null; }
+      else if (x.kind === "day") { curDay = x.val as number; }
+      else {
+        const week = curWeek ?? (sawDay && !sawWeek ? 1 : null);
+        const prev = slots[slots.length - 1];
+        // the same class is often wrapped in two anchors (thumbnail + title) —
+        // collapse adjacent duplicates within one day, keep true repeats
+        if (prev && prev.ride_id === x.val && prev.week === week && prev.day === curDay) continue;
+        slots.push({ ride_id: x.val as string, week, day: curDay });
+      }
+    }
+    if (!slots.length) return json({ ok: false, error: "importProgram: no classId links found in article", title }, 422);
+
+    const programId = (typeof reqBody.program_id === "string" && reqBody.program_id) ? reqBody.program_id : slug;
+    const wantCommit = reqBody?.commit === true;
+
+    // artwork → program-art bucket (best effort, commit only)
+    let imageUrl: string | null = null;
+    if (wantCommit && ogImage) {
+      try {
+        const ir = await fetch(ogImage, { headers: { "User-Agent": BROWSER_UA, Accept: "image/*,*/*;q=0.8" }, signal: AbortSignal.timeout(20000) });
+        if (ir.ok) {
+          const ct = ir.headers.get("content-type") ?? "image/jpeg";
+          const ext = ct.includes("webp") ? "webp" : ct.includes("png") ? "png" : ct.includes("avif") ? "avif" : "jpg";
+          const up = await fetch(`${SUPABASE_URL}/storage/v1/object/program-art/${programId}.${ext}`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, "Content-Type": ct, "x-upsert": "true" },
+            body: new Uint8Array(await ir.arrayBuffer()),
+          });
+          if (up.ok) imageUrl = `${SUPABASE_URL}/storage/v1/object/public/program-art/${programId}.${ext}`;
+        }
+      } catch { /* art is optional — never fail the import over it */ }
+    }
+
+    // hand off to the catalog branch
+    catalog = true;
+    reqBody.classes = slots.map((s, i) => ({ n: i + 1, ride_id: s.ride_id, week: s.week, day: s.day }));
+    reqBody.program_id = programId;
+    reqBody.program_title = reqBody.program_title ?? title;
+    reqBody.program_subtitle = reqBody.program_subtitle ?? subtitle;
+    reqBody.program_image_url = imageUrl;
+    importMeta = { slug, title, subtitle, og_image: ogImage, image_url: imageUrl, slots: slots.length, weeks_parsed: sawWeek, days_parsed: sawDay };
+  }
+
+  // ============================================================
   // CATALOG — resolve a supplied program manifest to peloton_ride_ids.
   // Programs aren't reachable via API, so the ordered class list is captured
   // externally (screenshot→OCR); here we look up each class's ride_id via
@@ -679,8 +840,14 @@ Deno.serve(async (req) => {
       if (c.ride_id) {
         const d = detailsById[c.ride_id];
         const ok = d && !d.__error;
+        // importProgram manifests carry only ride_id (+week/day) — fill
+        // title/instructor/duration from the ride details themselves
         return {
-          n: c.n ?? idx + 1, title: c.title, instructor: c.instructor, duration_min: wantDur, air_date: c.air_date ?? null,
+          n: c.n ?? idx + 1,
+          title: c.title ?? (ok ? d.title : null),
+          instructor: c.instructor ?? (ok ? (nameById[d.instructor_id] ?? null) : null),
+          duration_min: wantDur ?? (ok ? Math.round((d.duration ?? 0) / 60) : null),
+          air_date: c.air_date ?? null,
           week: c.week ?? null, day: c.day ?? null,
           confidence: ok ? "explicit" : "explicit-error", ride_id: ok ? c.ride_id : null,
           matched: ok ? { title: d.title, air_time: d.original_air_time ? iso10(d.original_air_time) : null } : null,
@@ -747,6 +914,9 @@ Deno.serve(async (req) => {
       if (programId) {
         const pw = await restWrite("POST", `programs?on_conflict=id`, [{
           id: programId, title: reqBody.program_title ?? programId, subtitle: reqBody.program_subtitle ?? null,
+          // only set image_url when the import fetched art — never null out
+          // manually curated artwork on re-import
+          ...(typeof reqBody.program_image_url === "string" ? { image_url: reqBody.program_image_url } : {}),
         }]);
         if (!pw.ok) return json({ ok: false, error: pw.err }, 500);
         const pcRows = results.filter((r) => r.ride_id).map((r) => ({
@@ -768,7 +938,7 @@ Deno.serve(async (req) => {
       ambiguous: results.filter((r) => r.confidence === "ambiguous").length,
       none: results.filter((r) => r.confidence === "none").length,
     };
-    return json({ ok: true, catalog: true, commit, committed, program_id: programId, programCommitted, summary, results });
+    return json({ ok: true, catalog: true, commit, committed, program_id: programId, programCommitted, summary, results, ...(importMeta ? { importProgram: importMeta } : {}) });
   }
 
   // ============================================================
