@@ -1385,3 +1385,15 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .ci-metric b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
 .ci-metric b span { font-size: 12px; font-weight: 600; color: var(--ink-4); margin-left: 2px; }
 .ci-metric i { display: block; font-style: normal; font-size: 11px; color: var(--ink-4); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* instructor chips editor (You page) */
+.chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.removable { display: inline-flex; align-items: center; gap: 6px; padding-right: 6px; }
+.chip.removable button { border: none; background: transparent; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; opacity: 0.7; }
+.chip.removable button:hover { opacity: 1; }
+
+/* Plan → Instructor: section header with avatar */
+.instr-head { display: flex; align-items: center; gap: 12px; margin: 18px 2px 10px; }
+.instr-avatar { width: 46px; height: 46px; border-radius: 50%; flex: none; background-size: cover; background-position: center top; background-color: var(--paper-3); }
+.instr-avatar.initials { display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: var(--ink-3); }
+.instr-name { font-size: 17px; font-weight: 800; line-height: 1.1; }

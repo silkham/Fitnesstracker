@@ -411,26 +411,28 @@ Deno.serve(async (req) => {
   }
 
   // ============================================================
-  // SCHEDULE mode — upcoming LIVE classes for a favourite instructor.
+  // SCHEDULE mode — upcoming LIVE classes for favourite instructor(s).
   // Ephemeral: fetches Peloton's live schedule, filters by instructor name,
-  // and returns a clean list straight to the app (writes NO DB rows).
-  // POST { schedule: true, instructor: "Bradley Rose" }
-  // Response includes `tried`/`endpoint` diagnostics so a miss is debuggable.
+  // returns a clean list straight to the app (writes NO DB rows).
+  // POST { schedule:true, instructors:["Bradley Rose", ...] }  (or instructor:"a,b")
+  // Response carries tried/endpoint/horizonDays/instructorsSeen for debugging.
   // ============================================================
   if (reqBody?.schedule === true) {
-    const favRaw = typeof reqBody.instructor === "string" ? reqBody.instructor.trim() : "";
-    const favKey = foldName(favRaw);
-    if (!favKey) return json({ ok: false, schedule: true, error: "instructor required" }, 400);
+    const favNames: string[] = Array.isArray(reqBody.instructors)
+      ? reqBody.instructors.map((s: unknown) => String(s ?? "").trim())
+      : (typeof reqBody.instructor === "string" ? reqBody.instructor.split(",").map((s) => s.trim()) : []);
+    const favKeys = favNames.map(foldName).filter(Boolean);
+    if (!favKeys.length) return json({ ok: false, schedule: true, error: "instructor required" }, 400);
 
-    // instructor id → display name (for filtering + labels)
-    const instrById: Record<string, string> = {};
+    // instructor id → { name, image }
+    const instr: Record<string, { name: string; image: string | null }> = {};
     try {
-      const il = await api(access, "api/instructor?limit=100&page=0");
-      for (const i of (il.data ?? [])) instrById[i.id] = i.name ?? [i.first_name, i.last_name].filter(Boolean).join(" ");
+      const il = await api(access, "api/instructor?limit=150&page=0");
+      for (const i of (il.data ?? [])) instr[i.id] = { name: i.name ?? [i.first_name, i.last_name].filter(Boolean).join(" "), image: i.image_url ?? null };
     } catch (_e) { /* names may still arrive inline on the schedule payload */ }
 
     // Try candidate live-schedule endpoints; keep the first with a non-empty data array.
-    const candidates = ["api/v3/ride/live", "api/ride/live", "api/v2/ride/live", "api/all_live_class"];
+    const candidates = ["api/v3/ride/live", "api/ride/live?limit=100", "api/ride/live", "api/v2/ride/live", "api/all_live_class"];
     let raw: any = null, used = "";
     const tried: any[] = [];
     for (const path of candidates) {
@@ -450,14 +452,18 @@ Deno.serve(async (req) => {
     const nowSec = Math.floor(Date.now() / 1000);
 
     const classes: any[] = [];
+    const seenNames = new Set<string>();
+    let maxStart = 0;
     for (const it of items) {
       const ride = it.ride ?? ridesMap[it.ride_id] ?? it;
       const sched = Number(it.scheduled_start_time ?? it.start_time ?? ride.scheduled_start_time ?? 0);
       if (!sched || sched < nowSec - 3600) continue;  // upcoming only (1h grace for live-now)
+      if (sched > maxStart) maxStart = sched;
       const instrId = ride.instructor_id ?? it.instructor_id;
-      const nm = instrById[instrId] ?? ride.instructor?.name ?? "";
-      const nmKey = foldName(nm);
-      if (nmKey !== favKey && !nmKey.includes(favKey)) continue;
+      const meta = instr[instrId] ?? { name: ride.instructor?.name ?? "", image: ride.instructor?.image_url ?? null };
+      if (meta.name) seenNames.add(meta.name);
+      const nmKey = foldName(meta.name);
+      if (!favKeys.some((k) => nmKey === k || nmKey.includes(k))) continue;
       const { date, time } = localParts(sched, TZ);
       classes.push({
         id: String(it.id ?? ride.id ?? sched),
@@ -466,11 +472,29 @@ Deno.serve(async (req) => {
         discipline: normDiscipline(ride.fitness_discipline),
         duration_min: ride.duration ? Math.round(ride.duration / 60) : null,
         start_unix: sched, date, time,
-        instructor: nm || favRaw,
+        instructor: meta.name || favNames[0], image: meta.image,
       });
     }
     classes.sort((a, b) => a.start_unix - b.start_unix);
-    return json({ ok: true, schedule: true, instructor: favRaw, endpoint: used, count: classes.length, tried, classes });
+    const horizonDays = maxStart ? Math.round((maxStart - nowSec) / 86400) : 0;
+    return json({ ok: true, schedule: true, instructors: favNames, endpoint: used, count: classes.length, horizonDays, instructorsSeen: [...seenNames].sort(), tried, classes });
+  }
+
+  // ============================================================
+  // DIRECTORY mode — the full instructor list (id, name, image_url).
+  // Small + stable; the app caches it for program hero images + avatars.
+  // POST { directory: true }
+  // ============================================================
+  if (reqBody?.directory === true) {
+    try {
+      const il = await api(access, "api/instructor?limit=150&page=0");
+      const instructors = (il.data ?? []).map((i: any) => ({
+        id: i.id, name: i.name ?? [i.first_name, i.last_name].filter(Boolean).join(" "), image: i.image_url ?? null,
+      }));
+      return json({ ok: true, directory: true, instructors });
+    } catch (e) {
+      return json({ ok: false, directory: true, error: String(e).slice(0, 160) });
+    }
   }
 
   // ============================================================

@@ -34,7 +34,8 @@ const State = {
   currentProgramId: null, // program open in the detail screen
   programTab: 'overview', // detail screen: 'overview' | week index (0-based)
   planTab: 'program',   // Plan screen: program | instructor
-  instructorSchedule: null, // { instructor, classes:[...] } | 'loading' | 'error' — cache for the Instructor sub-view
+  instructorSchedule: null, // { instructors, classes:[...] } | 'loading' | 'error' — cache for the Instructor sub-view
+  instructorDir: null,  // { foldedName: {name, image} } — cached Peloton instructor directory (photos)
 };
 
 // ============================================================
@@ -43,7 +44,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.6';
+const APP_VERSION = 'Stride · v4.7';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -772,6 +773,14 @@ function programHash(id) {
   return h;
 }
 function programGrad(p) { return PROGRAM_GRADS[programHash(p.id) % PROGRAM_GRADS.length]; }
+// Peloton fronts programs with the instructor's photo; we do the same when the
+// directory has loaded, falling back to the per-program gradient otherwise.
+function programHeroStyle(p) {
+  const img = instructorImage(programInstructors(p).primary);
+  return img
+    ? `background-image:linear-gradient(to top, rgba(0,0,0,0.74), rgba(0,0,0,0.12)), url('${img}');background-size:cover;background-position:center 18%;`
+    : `background:${programGrad(p)};`;
+}
 
 function programStats(p) {
   const done = State.programProgress[p.id] || new Set();
@@ -799,6 +808,57 @@ function programNextClass(p) {
   return p.classes.find(c => !done.has(c.ride_id)) || null;
 }
 
+// ---- Instructors: favourites list + Peloton photo directory ----
+function foldName(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function favouriteInstructors(m) {
+  const raw = (m && m.favourite_instructor) ? String(m.favourite_instructor) : '';
+  const out = [];
+  raw.split(',').forEach(s => { const n = s.trim(); if (n && !out.some(x => foldName(x) === foldName(n))) out.push(n); });
+  return out;
+}
+function primaryInstructor(m) { return favouriteInstructors(m)[0] || ''; }
+function instructorImage(name) {
+  if (!name || !State.instructorDir) return null;
+  const hit = State.instructorDir[foldName(name)];
+  return hit ? hit.image : null;
+}
+async function loadInstructorDirectory(force) {
+  if (State.instructorDir && !force) return State.instructorDir;
+  try {
+    const cached = JSON.parse(localStorage.getItem('stride_instructor_dir_v1') || 'null');
+    if (cached && !force && (Date.now() - cached.at) < 30 * 86400000) { State.instructorDir = cached.map; return State.instructorDir; }
+  } catch (_e) { /* ignore cache read errors */ }
+  try {
+    const cfg = getConfig();
+    const { data: { session } } = await State.client.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return null;
+    const res = await fetch(`${cfg.url}/functions/v1/peloton-ingest`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, apikey: cfg.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directory: true }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (out && out.ok && Array.isArray(out.instructors)) {
+      const map = {};
+      out.instructors.forEach(i => { if (i.name) map[foldName(i.name)] = { name: i.name, image: i.image || null }; });
+      State.instructorDir = map;
+      try { localStorage.setItem('stride_instructor_dir_v1', JSON.stringify({ at: Date.now(), map })); } catch (_e) { /* quota */ }
+      return map;
+    }
+  } catch (e) { console.error('loadInstructorDirectory', e); }
+  return null;
+}
+// Fire the directory load once per session; re-render the Plan when photos arrive.
+function ensureInstructorDir() {
+  if (State.instructorDir || State._instrDirLoading || State._instrDirFailed) return;
+  State._instrDirLoading = true;
+  loadInstructorDirectory().then(dir => { if (!dir) State._instrDirFailed = true; })
+    .finally(() => { State._instrDirLoading = false; renderPlan(); });
+}
+
 // ---- Plan screen: Program ⇄ Instructor toggle ----
 function renderPlan() {
   const tab = State.planTab || 'program';
@@ -824,6 +884,7 @@ function renderPrograms() {
   const sub = document.getElementById('programsSub');
   const content = document.getElementById('programsContent');
   if (!content) return;
+  ensureInstructorDir();  // load instructor photos for program heroes
   const all = State.programs;
   if (!all.length) {
     if (sub) sub.textContent = 'Ordered class plans';
@@ -858,7 +919,7 @@ function programCardHtml(p, s) {
     ? `<button class="pd-class-btn" onclick="event.stopPropagation();openProgram('${p.id}')">Review program</button>`
     : `<button class="pd-class-btn" onclick="event.stopPropagation();startNextClass('${p.id}')">Start next class</button>`;
   return `<div class="prog-card" onclick="openProgram('${p.id}')">
-    <div class="prog-hero" style="background:${programGrad(p)};">
+    <div class="prog-hero" style="${programHeroStyle(p)}">
       ${pill ? `<span class="prog-pill">${pill}</span>` : ''}
       <div class="prog-hero-title">${escapeHtml(p.title)}</div>
     </div>
@@ -907,7 +968,7 @@ function renderProgramDetail() {
     ? `<div class="pd-startbar"><button class="pd-start-btn" onclick="openClassInfo('${p.id}','${nc.ride_id}')">▶ Start next class</button></div>`
     : `<div class="pd-startbar"><button class="pd-start-btn done" disabled>✓ Program complete</button></div>`;
   host.innerHTML = `
-    <div class="pd-hero" style="background:${programGrad(p)};">
+    <div class="pd-hero" style="${programHeroStyle(p)}">
       <button class="pd-back" onclick="switchScreen('programs')" aria-label="Back">‹</button>
       <div class="pd-hero-title">${escapeHtml(p.title)}</div>
     </div>
@@ -1001,7 +1062,17 @@ function openClassInfo(programId, rideId) {
   const doneOn = wk && (wk.done_at || wk.planned_for) ? ` · ${shortDate(wk.done_at || wk.planned_for)}` : '';
   const statusText = isDone
     ? `Completed${doneOn}${tiles.length ? ' — your stats from this class.' : ' — synced from your Peloton history.'}`
-    : 'Not yet completed. Take this class in the Peloton app; it’ll tick off here after your next sync.';
+    : 'Not yet completed. Pick a day to add it to your plan, or take it in the Peloton app and it’ll tick off here after your next sync.';
+
+  const today = todayISO();
+  const addBlock = isDone ? '' : `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="tiny" style="color:var(--ink-3);margin-bottom:8px;">Add this class to your plan</div>
+      <div style="display:flex;gap:8px;">
+        <input type="date" id="ciPlanDate" class="input" value="${today}" min="${today}" style="flex:1;">
+        <button class="btn accent" onclick="addProgramClassToPlan('${p.id}','${c.ride_id}')">Add to plan</button>
+      </div>
+    </div>`;
 
   const html = `
     <div style="margin-bottom:14px;">
@@ -1009,23 +1080,52 @@ function openClassInfo(programId, rideId) {
       <div style="font-size:20px;font-weight:700;line-height:1.2;">${escapeHtml(c.title)}</div>
       <div class="tiny" style="color:var(--ink-3);margin-top:6px;">${escapeHtml(c.instructor || 'Various')}${c.duration_min ? ` · ${c.duration_min} min` : ''}</div>
     </div>
-    <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:${metricsHtml ? '14px' : '16px'};">
+    <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:${(metricsHtml || addBlock) ? '14px' : '16px'};">
       <span style="width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:${isDone ? 'var(--accent)' : 'var(--paper-3)'};color:${isDone ? 'var(--accent-ink)' : 'var(--ink-4)'};">${isDone ? '✓' : '•'}</span>
       <div class="tiny" style="color:var(--ink-3);">${statusText}</div>
     </div>
     ${metricsHtml}
     ${striveNote}
-    <button class="btn primary block" onclick="closeSheet();switchScreen('exercise');">Go to Training to sync</button>`;
+    ${addBlock}
+    <button class="btn ${isDone ? 'primary' : 'ghost'} block" onclick="closeSheet();switchScreen('exercise');">Go to Training${isDone ? '' : ' to sync'}</button>`;
   openSheet('Class details', html);
+}
+
+async function addProgramClassToPlan(programId, rideId) {
+  const p = State.programs.find(x => x.id === programId);
+  if (!p) return;
+  const c = p.classes.find(x => x.ride_id === rideId);
+  if (!c) return;
+  const m = activeMember();
+  if (!m) return;
+  const dateEl = document.getElementById('ciPlanDate');
+  const date = dateEl && dateEl.value ? dateEl.value : todayISO();
+  const dupe = State.workouts.some(w => w.status === 'planned' && w.peloton_ride_id === c.ride_id && w.planned_for === date);
+  if (dupe) { toast('Already planned for that day'); return; }
+  const row = {
+    household_id: State.householdId, member_id: m.id,
+    planned_for: date,
+    session_type: detectWorkoutType(c.title) || 'ride',
+    duration_min: c.duration_min || null,
+    status: 'planned', source: 'program',
+    peloton_ride_id: c.ride_id || null, class_title: c.title || null, instructor: c.instructor || null,
+  };
+  const { data, error } = await State.client.from('workouts').insert([row]).select();
+  if (error) { console.error('addProgramClassToPlan', error); toast('Couldn’t add to plan'); return; }
+  if (data) data.forEach(w => State.workouts.push(w));
+  toast('Added to your plan');
+  closeSheet();
+  renderAll();
 }
 
 // ---- Plan → Instructor: favourite instructor's upcoming LIVE classes ----
 async function fetchInstructorSchedule() {
   const m = activeMember();
-  const fav = m && m.favourite_instructor ? m.favourite_instructor.trim() : '';
-  if (!fav) { State.instructorSchedule = { instructor: '', classes: [] }; renderInstructor(); return; }
+  const favs = favouriteInstructors(m);
+  if (!favs.length) { State.instructorSchedule = { classes: [] }; renderInstructor(); return; }
   State.instructorSchedule = 'loading';
   renderInstructor();
+  loadInstructorDirectory();  // avatars, in parallel
   try {
     const cfg = getConfig();
     const { data: { session } } = await State.client.auth.getSession();
@@ -1034,11 +1134,11 @@ async function fetchInstructorSchedule() {
     const res = await fetch(`${cfg.url}/functions/v1/peloton-ingest`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, apikey: cfg.key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ schedule: true, instructor: fav }),
+      body: JSON.stringify({ schedule: true, instructors: favs }),
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out.ok) { console.error('instructor schedule', res.status, out); State.instructorSchedule = 'error'; }
-    else State.instructorSchedule = { instructor: out.instructor || fav, classes: out.classes || [], endpoint: out.endpoint };
+    else State.instructorSchedule = { classes: out.classes || [], endpoint: out.endpoint, horizonDays: out.horizonDays };
   } catch (e) {
     console.error('fetchInstructorSchedule', e);
     State.instructorSchedule = 'error';
@@ -1052,23 +1152,48 @@ function instructorDayLabel(iso) {
   return `${dayLabel(iso)} ${shortDate(iso)}`;
 }
 
+function instructorAvatarHtml(name) {
+  const img = instructorImage(name);
+  if (img) return `<div class="instr-avatar" style="background-image:url('${img}');"></div>`;
+  const initials = name.split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+  return `<div class="instr-avatar initials">${escapeHtml(initials || '?')}</div>`;
+}
+function instructorClassRowHtml(c) {
+  const added = State.workouts.some(w => w.status === 'planned' && w.peloton_ride_id && w.peloton_ride_id === c.ride_id && w.planned_for === c.date);
+  const meta = [sessionTypeLabel(c.discipline), c.duration_min ? `${c.duration_min} min` : ''].filter(Boolean).join(' · ');
+  const btn = added
+    ? `<button class="card-action" disabled style="opacity:0.6;">Added ✓</button>`
+    : `<button class="card-action" onclick="addLiveClassToSchedule('${c.id}')">+ Schedule</button>`;
+  return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+    <div style="flex:none;width:78px;">
+      <div style="font-size:12px;color:var(--ink-3);font-weight:600;">${escapeHtml(instructorDayLabel(c.date))}</div>
+      <div style="font-size:17px;font-weight:800;line-height:1.1;">${escapeHtml(c.time || '')}</div>
+    </div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:14px;font-weight:600;line-height:1.2;">${escapeHtml(c.title)}</div>
+      <div class="tiny" style="color:var(--ink-4);margin-top:2px;">${escapeHtml(meta)}</div>
+    </div>
+    ${btn}
+  </div>`;
+}
 function renderInstructor() {
   const host = document.getElementById('instructorContent');
   if (!host) return;
+  ensureInstructorDir();
   const m = activeMember();
-  const fav = m && m.favourite_instructor ? m.favourite_instructor.trim() : '';
+  const favs = favouriteInstructors(m);
   const sub = document.getElementById('programsSub');
 
-  if (!fav) {
+  if (!favs.length) {
     if (sub) sub.textContent = 'Upcoming live classes';
     host.innerHTML = `<div class="card" style="text-align:center;padding:28px 16px;color:var(--ink-3);">
-      <div style="font-size:14px;margin-bottom:4px;">No favourite instructor set</div>
-      <div class="tiny" style="color:var(--ink-4);margin-bottom:12px;">Set one on the You page to see their upcoming live classes.</div>
+      <div style="font-size:14px;margin-bottom:4px;">No favourite instructors set</div>
+      <div class="tiny" style="color:var(--ink-4);margin-bottom:12px;">Add instructors on the You page to see their upcoming live classes.</div>
       <button class="btn ghost block" onclick="switchScreen('profile')">Open You</button>
     </div>`;
     return;
   }
-  if (sub) sub.textContent = `${fav} · upcoming live`;
+  if (sub) sub.textContent = `${favs.length} instructor${favs.length === 1 ? '' : 's'} · upcoming live`;
 
   const st = State.instructorSchedule;
   if (st === 'loading' || st == null) {
@@ -1086,44 +1211,14 @@ function renderInstructor() {
   }
 
   const classes = st.classes || [];
-  if (!classes.length) {
-    host.innerHTML = `<div class="card" style="text-align:center;padding:24px 16px;color:var(--ink-3);">
-      <div style="font-size:14px;margin-bottom:4px;">No upcoming live classes</div>
-      <div class="tiny" style="color:var(--ink-4);margin-bottom:12px;">${escapeHtml(st.instructor || fav)} has nothing on the live schedule right now.</div>
-      <button class="btn ghost block" onclick="fetchInstructorSchedule()">Refresh</button>
-    </div>`;
-    return;
-  }
-
-  // Group by local day, in chronological order.
-  const byDay = [];
-  const seen = {};
-  classes.forEach(c => {
-    if (!seen[c.date]) { seen[c.date] = { date: c.date, items: [] }; byDay.push(seen[c.date]); }
-    seen[c.date].items.push(c);
-  });
-
+  // One section per favourite instructor (in your saved order), classes chronological.
   let html = '';
-  byDay.forEach(day => {
-    html += `<div class="eyebrow" style="margin:16px 2px 8px;">${instructorDayLabel(day.date)}</div>`;
-    day.items.forEach(c => {
-      const added = State.workouts.some(w => w.status === 'planned' && w.peloton_ride_id && w.peloton_ride_id === c.ride_id && w.planned_for === c.date);
-      const meta = [sessionTypeLabel(c.discipline), c.duration_min ? `${c.duration_min} min` : ''].filter(Boolean).join(' · ');
-      const btn = added
-        ? `<button class="card-action" disabled style="opacity:0.6;">Added ✓</button>`
-        : `<button class="card-action" onclick="addLiveClassToSchedule('${c.id}')">+ Schedule</button>`;
-      html += `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-        <div style="text-align:center;flex:none;width:52px;">
-          <div style="font-size:17px;font-weight:800;line-height:1;">${escapeHtml(c.time || '')}</div>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:600;line-height:1.2;">${escapeHtml(c.title)}</div>
-          <div class="tiny" style="color:var(--ink-4);margin-top:2px;">${escapeHtml(meta)}</div>
-        </div>
-        ${btn}
-      </div>`;
-    });
+  favs.forEach(fav => {
+    const mine = classes.filter(c => foldName(c.instructor).includes(foldName(fav)) || foldName(fav).includes(foldName(c.instructor))).sort((a, b) => a.start_unix - b.start_unix);
+    html += `<div class="instr-head">${instructorAvatarHtml(fav)}<div><div class="instr-name">${escapeHtml(fav)}</div><div class="tiny" style="color:var(--ink-4);">${mine.length ? `${mine.length} upcoming` : 'No upcoming live classes'}</div></div></div>`;
+    html += mine.map(instructorClassRowHtml).join('');
   });
+  html += `<div style="text-align:right;margin-top:6px;"><a href="#" onclick="event.preventDefault();fetchInstructorSchedule();" style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-4);text-decoration:none;">Refresh</a></div>`;
   host.innerHTML = html;
 }
 
@@ -3278,8 +3373,9 @@ function renderExercise() {
   let html = '';
 
   // Favourite instructor ambient label
-  if (m.favourite_instructor) {
-    html += `<div class="tiny" style="padding:0 2px 12px;color:var(--ink-3);">This week · ${escapeHtml(m.favourite_instructor)}</div>`;
+  {
+    const favs = favouriteInstructors(m);
+    if (favs.length) html += `<div class="tiny" style="padding:0 2px 12px;color:var(--ink-3);">This week · ${escapeHtml(favs.join(' · '))}</div>`;
   }
 
   // Action buttons — moved to top
@@ -5041,6 +5137,7 @@ async function saveMemberWeeklyPlan(id) {
 function openMemberEditorWorkouts(memberId) {
   const m = State.members.find(x => x.id === memberId);
   if (!m) return;
+  State._editInstructors = favouriteInstructors(m);  // working copy for the chips editor
   const goals = [
     { id:'lose_weight', label:'Lose weight' },
     { id:'event', label:'Train for event' },
@@ -5080,8 +5177,13 @@ function openMemberEditorWorkouts(memberId) {
     </div>
 
     <div class="field">
-      <label class="field-label">Favourite Peloton instructor</label>
-      <input class="input" id="mInstructor" placeholder="Bradley Rose" value="${escapeHtml(m.favourite_instructor || '')}">
+      <label class="field-label">Favourite Peloton instructors</label>
+      <div id="mInstructorChips" class="chip-list"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input class="input" id="mInstructorInput" placeholder="Bradley Rose" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditInstructor();}">
+        <button class="btn" onclick="addEditInstructor()">Add</button>
+      </div>
+      <div class="tiny" style="color:var(--ink-4);margin-top:6px;">Their upcoming live classes show on the Plan → Instructor tab.</div>
     </div>
 
     <div class="btn-row" style="margin-top:18px;">
@@ -5089,6 +5191,31 @@ function openMemberEditorWorkouts(memberId) {
     </div>
   `;
   openSheet('Workouts · ' + escapeHtml(m.display_name), html);
+  renderInstructorChips();
+}
+
+function renderInstructorChips() {
+  const host = document.getElementById('mInstructorChips');
+  if (!host) return;
+  const list = State._editInstructors || [];
+  host.innerHTML = list.length
+    ? list.map((n, i) => `<span class="chip removable">${escapeHtml(n)}<button type="button" aria-label="Remove" onclick="removeEditInstructor(${i})">×</button></span>`).join('')
+    : `<span class="tiny" style="color:var(--ink-4);">None yet — add one below.</span>`;
+}
+function addEditInstructor() {
+  const input = document.getElementById('mInstructorInput');
+  if (!input) return;
+  const name = input.value.trim();
+  State._editInstructors = State._editInstructors || [];
+  if (name && !State._editInstructors.some(x => foldName(x) === foldName(name))) State._editInstructors.push(name);
+  input.value = '';
+  input.focus();
+  renderInstructorChips();
+}
+function removeEditInstructor(i) {
+  if (!State._editInstructors) return;
+  State._editInstructors.splice(i, 1);
+  renderInstructorChips();
 }
 
 async function saveMemberWorkouts(id) {
@@ -5103,9 +5230,16 @@ async function saveMemberWorkouts(id) {
   const payload = {
     goal_type: document.querySelector('#mGoalType .chip.active')?.dataset.g || 'general',
     session_duration_prefs: durs,
-    favourite_instructor: document.getElementById('mInstructor').value.trim() || null,
+    favourite_instructor: (() => {
+      const list = (State._editInstructors || []).slice();
+      const pending = (document.getElementById('mInstructorInput')?.value || '').trim();  // catch un-added text
+      if (pending && !list.some(x => foldName(x) === foldName(pending))) list.push(pending);
+      return list.join(', ') || null;
+    })(),
   };
   await saveMemberPayload(id, payload);
+  // schedule cache is keyed on the favourites — drop it so the tab refetches
+  State.instructorSchedule = null;
   openMemberEditor(id);
 }
 
