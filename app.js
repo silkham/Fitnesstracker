@@ -44,7 +44,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.7';
+const APP_VERSION = 'Stride · v4.7.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -732,13 +732,22 @@ async function loadPrograms() {
       State.client.from('programs').select('*').order('created_at'),
       State.client.from('program_classes').select('*').order('order_num'),
     ]);
+    // Class artwork lives in the peloton_classes catalog (Peloton's ride stills,
+    // synced by the ingest catalog branch) — join it in for hero fallbacks.
+    const rideIds = [...new Set((classes || []).map(c => c.ride_id))];
+    const imgByRide = {};
+    if (rideIds.length) {
+      const { data: cat } = await State.client.from('peloton_classes').select('peloton_ride_id,image_url').in('peloton_ride_id', rideIds);
+      (cat || []).forEach(r => { if (r.image_url) imgByRide[r.peloton_ride_id] = r.image_url; });
+    }
     const byProgram = {};
     (classes || []).forEach(c => {
       (byProgram[c.program_id] = byProgram[c.program_id] || []).push({
         order: c.order_num, ride_id: c.ride_id, title: c.title, instructor: c.instructor, duration_min: c.duration_min,
+        image: imgByRide[c.ride_id] || null,
       });
     });
-    State.programs = (progs || []).map(p => ({ id: p.id, title: p.title, subtitle: p.subtitle, classes: byProgram[p.id] || [] }));
+    State.programs = (progs || []).map(p => ({ id: p.id, title: p.title, subtitle: p.subtitle, image_url: p.image_url || null, classes: byProgram[p.id] || [] }));
   } catch (e) { State.programs = State.programs || []; }
 }
 
@@ -755,8 +764,8 @@ async function loadProgramProgress() {
 }
 
 // Programs mirror the Peloton app's structure: a filterable list of hero cards,
-// then a full-page detail (Overview + per-week class lists). We have no images,
-// so hero blocks use per-program gradients keyed off the program id.
+// then a full-page detail (Overview + per-week class lists). Hero artwork:
+// programs.image_url → first class's ride still → instructor photo → gradient.
 const PROGRAM_PER_WEEK = 5;
 const PROGRAM_GRADS = [
   'linear-gradient(135deg,#7a4a24,#2a1710)',  // amber / Power Zones
@@ -773,13 +782,21 @@ function programHash(id) {
   return h;
 }
 function programGrad(p) { return PROGRAM_GRADS[programHash(p.id) % PROGRAM_GRADS.length]; }
-// Peloton fronts programs with the instructor's photo; we do the same when the
-// directory has loaded, falling back to the per-program gradient otherwise.
+// The program's own artwork (programs.image_url — absolute https URL, or a
+// path relative to the app root for repo-hosted art), else the first class's
+// Peloton ride still from the catalog join.
+function programImage(p) {
+  if (p.image_url) return p.image_url;
+  const c = (p.classes || []).find(x => x.image);
+  return c ? c.image : null;
+}
 function programHeroStyle(p) {
-  const img = instructorImage(programInstructors(p).primary);
-  return img
-    ? `background-image:linear-gradient(to top, rgba(0,0,0,0.74), rgba(0,0,0,0.12)), url('${img}');background-size:cover;background-position:center 18%;`
-    : `background:${programGrad(p)};`;
+  const art = programImage(p);
+  const img = art || instructorImage(programInstructors(p).primary);
+  if (!img) return `background:${programGrad(p)};`;
+  // program/ride art is landscape (centre it); instructor photos are portrait
+  // headshots (bias toward the face at the top)
+  return `background-image:linear-gradient(to top, rgba(0,0,0,0.74), rgba(0,0,0,0.12)), url('${img}');background-size:cover;background-position:center ${art ? '50%' : '18%'};`;
 }
 
 function programStats(p) {
