@@ -1313,3 +1313,68 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .spacer-md { height: 16px; }
 .spacer-lg { height: 24px; }
 .hide { display: none !important; }
+
+/* ============================================================
+   PROGRAMS — Peloton-style list + full-page detail
+============================================================ */
+/* filter chips (All / In progress / Completed) */
+.prog-filter { display: flex; gap: 8px; margin-bottom: 14px; }
+.prog-chip { border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.prog-chip.active { border-color: var(--ink); background: var(--paper-3); color: var(--ink); }
+.prog-chip-n { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 7px; font-size: 11px; line-height: 18px; min-width: 18px; text-align: center; }
+
+/* list hero card */
+.prog-card { border-radius: 16px; overflow: hidden; margin-bottom: 16px; background: var(--glass); border: 1px solid var(--glass-line); cursor: pointer; }
+.prog-hero { position: relative; min-height: 150px; display: flex; align-items: flex-end; padding: 16px; }
+.prog-hero-title { font-family: 'Archivo Expanded', 'Archivo', sans-serif; font-weight: 800; font-size: 26px; line-height: 1.05; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.45); }
+.prog-pill { position: absolute; top: 12px; left: 12px; z-index: 2; background: rgba(0,0,0,0.55); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 5px 10px; border-radius: 999px; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.prog-pill.done { background: var(--accent); color: var(--accent-ink); }
+.prog-card-body { padding: 14px 16px 16px; }
+.prog-instr { font-size: 14px; font-weight: 600; color: var(--ink); }
+.prog-count { font-size: 13px; color: var(--ink-2); margin: 6px 0 8px; }
+.prog-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.prog-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* pill button shared by list cards + week class cards */
+.pd-class-btn { margin-top: 12px; border: none; background: var(--paper-3); color: var(--ink); border-radius: 999px; padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+
+/* detail hero — full-bleed inside the 16px-padded screen */
+.pd-hero { position: relative; margin: -16px -16px 0; min-height: 210px; display: flex; align-items: flex-end; padding: 20px 16px; }
+.pd-hero-title { font-family: 'Archivo Expanded', 'Archivo', sans-serif; font-weight: 800; font-size: 30px; line-height: 1.03; color: #fff; text-shadow: 0 2px 14px rgba(0,0,0,0.5); }
+.pd-back { position: absolute; top: 14px; left: 12px; width: 38px; height: 38px; border-radius: 50%; border: none; background: rgba(0,0,0,0.5); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+
+/* detail tab strip (Overview / Week N) */
+.pd-tabs { display: flex; gap: 20px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 0 -16px 16px; padding: 0 16px; scrollbar-width: none; }
+.pd-tabs::-webkit-scrollbar { display: none; }
+.pd-tab { flex: none; background: none; border: none; color: var(--ink-4); font-size: 15px; font-weight: 600; padding: 14px 0; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.pd-tab.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+.pd-panel { padding-bottom: 96px; }
+
+/* overview panel */
+.pd-count-card { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 14px; padding: 18px 16px; margin-bottom: 12px; }
+.pd-count { margin-bottom: 12px; }
+.pd-count b { font-size: 34px; font-weight: 800; }
+.pd-count span { font-size: 18px; color: var(--ink-3); font-weight: 600; }
+.pd-stat-row { display: flex; background: var(--glass); border: 1px solid var(--glass-line); border-radius: 14px; padding: 16px 8px; margin-bottom: 12px; }
+.pd-stat { flex: 1; text-align: center; }
+.pd-stat b { display: block; font-size: 20px; font-weight: 800; }
+.pd-stat span { font-size: 12px; color: var(--ink-4); }
+.pd-about { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 14px; padding: 16px; }
+.pd-about-instr { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+.pd-about p { font-size: 14px; line-height: 1.55; color: var(--ink-3); margin: 0; }
+
+/* week -> day -> class card */
+.pd-day { margin-bottom: 18px; }
+.pd-day-label { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+.pd-class { position: relative; border-radius: 14px; min-height: 150px; padding: 16px; display: flex; flex-direction: column; justify-content: flex-end; cursor: pointer; overflow: hidden; }
+.pd-class::after { content: ''; position: absolute; inset: 0; z-index: 0; background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0.05) 55%); }
+.pd-class.is-done { opacity: 0.72; }
+.pd-class-title { position: relative; z-index: 1; font-size: 20px; font-weight: 800; color: #fff; line-height: 1.1; text-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+.pd-class-instr { position: relative; z-index: 1; font-size: 13px; color: rgba(255,255,255,0.85); margin-top: 2px; }
+.pd-class .pd-class-btn { position: relative; z-index: 1; align-self: flex-start; background: rgba(0,0,0,0.55); color: #fff; }
+
+/* floating start bar — only in the DOM while the detail screen is active */
+.pd-startbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom)); width: 100%; max-width: 480px; padding: 0 16px; z-index: 40; pointer-events: none; }
+.pd-start-btn { pointer-events: auto; width: 100%; border: none; border-radius: 999px; background: #fff; color: #0a0a0a; font-size: 16px; font-weight: 800; padding: 16px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.pd-start-btn.done { background: var(--paper-3); color: var(--ink-3); }

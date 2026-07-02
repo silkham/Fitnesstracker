@@ -30,6 +30,9 @@ const State = {
   programProgress: {},  // {program_id: Set<peloton_ride_id>} — completed classes per program
   trainingTab: 'ride',  // Progress screen: ride | strength discipline toggle
   oneRmLift: null,      // Progress screen: exercise shown in the 1RM trend
+  programFilter: 'all', // Programs tab: all | inprogress | completed
+  currentProgramId: null, // program open in the detail screen
+  programTab: 'overview', // detail screen: 'overview' | week index (0-based)
 };
 
 // ============================================================
@@ -38,7 +41,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.5.1';
+const APP_VERSION = 'Stride · v4.5.2';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -748,60 +751,220 @@ async function loadProgramProgress() {
   }
 }
 
-function programsCardHtml() {
-  if (!State.programs.length) return '';
-  return State.programs.map(p => {
-    const done = State.programProgress[p.id] || new Set();
-    const doneCount = p.classes.filter(c => done.has(c.ride_id)).length;
-    const pct = Math.round((doneCount / p.classes.length) * 100);
-    return `<div class="card" style="cursor:pointer;margin-bottom:8px;" onclick="openProgram('${p.id}')">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;">
-        <span style="font-weight:600;">${escapeHtml(p.title)}</span>
-        <span class="tiny" style="color:var(--ink-3);">${doneCount}/${p.classes.length}</span>
-      </div>
-      <div class="tiny" style="color:var(--ink-4);margin:2px 0 8px;">${escapeHtml(p.subtitle)}</div>
-      <div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden;">
-        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;"></div>
-      </div>
-    </div>`;
-  }).join('');
+// Programs mirror the Peloton app's structure: a filterable list of hero cards,
+// then a full-page detail (Overview + per-week class lists). We have no images,
+// so hero blocks use per-program gradients keyed off the program id.
+const PROGRAM_PER_WEEK = 5;
+const PROGRAM_GRADS = [
+  'linear-gradient(135deg,#7a4a24,#2a1710)',  // amber / Power Zones
+  'linear-gradient(135deg,#1c4a6e,#0d1f30)',  // blue
+  'linear-gradient(135deg,#4a3a6e,#1e1830)',  // violet
+  'linear-gradient(135deg,#1c5a44,#0c2a20)',  // emerald
+  'linear-gradient(135deg,#6e2440,#301019)',  // rose
+  'linear-gradient(135deg,#2a4a6e,#101c2a)',  // steel
+];
+function programHash(id) {
+  const s = String(id);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
 }
+function programGrad(p) { return PROGRAM_GRADS[programHash(p.id) % PROGRAM_GRADS.length]; }
 
-function openProgram(programId) {
-  const p = State.programs.find(x => x.id === programId);
-  if (!p) return;
+function programStats(p) {
   const done = State.programProgress[p.id] || new Set();
-  const perWeek = 5;
-  let html = '';
-  p.classes.forEach((c, i) => {
-    if (i % perWeek === 0) html += `<div class="eyebrow" style="margin:${i === 0 ? 0 : 16}px 2px 6px;">Week ${Math.floor(i / perWeek) + 1}</div>`;
-    const isDone = done.has(c.ride_id);
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);">
-      <span style="width:18px;height:18px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;
-        background:${isDone ? 'var(--accent)' : 'transparent'};color:${isDone ? 'var(--accent-ink)' : 'var(--ink-4)'};border:1px solid ${isDone ? 'var(--accent)' : 'var(--line-2)'};">${isDone ? '✓' : c.order}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;${isDone ? 'color:var(--ink-3);' : ''}">${escapeHtml(c.title)}</div>
-        <div class="tiny" style="color:var(--ink-4);">${escapeHtml(c.instructor)} · ${c.duration_min} min</div>
-      </div>
-    </div>`;
-  });
-  openSheet(p.title, html);
+  const total = p.classes.length;
+  const doneCount = p.classes.filter(c => done.has(c.ride_id)).length;
+  const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  const weeks = Math.max(1, Math.ceil(total / PROGRAM_PER_WEEK));
+  const perWeekCounts = [];
+  for (let w = 0; w < weeks; w++) perWeekCounts.push(p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK).length);
+  const durs = p.classes.map(c => c.duration_min).filter(d => d > 0);
+  const status = doneCount === 0 ? 'notstarted' : (doneCount >= total ? 'completed' : 'inprogress');
+  return {
+    done, total, doneCount, pct, weeks, status,
+    perWeekMin: Math.min(...perWeekCounts), perWeekMax: Math.max(...perWeekCounts),
+    minDur: durs.length ? Math.min(...durs) : 0, maxDur: durs.length ? Math.max(...durs) : 0,
+  };
+}
+function programInstructors(p) {
+  const seen = [];
+  p.classes.forEach(c => { const n = (c.instructor || '').trim(); if (n && !seen.includes(n)) seen.push(n); });
+  return { primary: seen[0] || 'Various', extra: Math.max(0, seen.length - 1) };
+}
+function programNextClass(p) {
+  const done = State.programProgress[p.id] || new Set();
+  return p.classes.find(c => !done.has(c.ride_id)) || null;
 }
 
+// ---- Programs tab: filterable list of hero cards ----
 function renderPrograms() {
   const sub = document.getElementById('programsSub');
   const content = document.getElementById('programsContent');
   if (!content) return;
-  const n = State.programs.length;
-  if (sub) sub.textContent = n ? `${n} ${n === 1 ? 'program' : 'programs'} · tap to see the plan` : 'Ordered class plans';
-  if (!n) {
+  const all = State.programs;
+  if (!all.length) {
+    if (sub) sub.textContent = 'Ordered class plans';
     content.innerHTML = `<div class="card" style="text-align:center;padding:28px 16px;color:var(--ink-3);">
       <div style="font-size:14px;margin-bottom:4px;">No programs yet</div>
       <div class="tiny" style="color:var(--ink-4);">Curated, ordered class plans will appear here.</div>
     </div>`;
     return;
   }
-  content.innerHTML = programsCardHtml();
+  const stats = all.map(programStats);
+  const inProg = stats.filter(s => s.status === 'inprogress').length;
+  const comp = stats.filter(s => s.status === 'completed').length;
+  if (sub) sub.textContent = `${all.length} ${all.length === 1 ? 'program' : 'programs'}${inProg ? ` · ${inProg} in progress` : ''}`;
+
+  const f = State.programFilter;
+  const chip = (id, label, count) => `<button class="prog-chip ${f === id ? 'active' : ''}" onclick="setProgramFilter('${id}')">${label}${count != null ? ` <span class="prog-chip-n">${count}</span>` : ''}</button>`;
+  let html = `<div class="prog-filter">${chip('all', 'All', null)}${chip('inprogress', 'In progress', inProg)}${chip('completed', 'Completed', comp)}</div>`;
+
+  const shown = all.map((p, i) => ({ p, s: stats[i] })).filter(x =>
+    f === 'all' || (f === 'inprogress' && x.s.status === 'inprogress') || (f === 'completed' && x.s.status === 'completed'));
+  if (!shown.length) {
+    html += `<div class="tiny" style="text-align:center;padding:28px;color:var(--ink-4);">Nothing in this filter yet.</div>`;
+  } else {
+    html += shown.map(({ p, s }) => programCardHtml(p, s)).join('');
+  }
+  content.innerHTML = html;
+}
+function programCardHtml(p, s) {
+  const ins = programInstructors(p);
+  const pill = s.status === 'completed' ? 'Completed' : (s.status === 'inprogress' ? 'In progress' : '');
+  const btn = s.status === 'completed'
+    ? `<button class="pd-class-btn" onclick="event.stopPropagation();openProgram('${p.id}')">Review program</button>`
+    : `<button class="pd-class-btn" onclick="event.stopPropagation();startNextClass('${p.id}')">Start next class</button>`;
+  return `<div class="prog-card" onclick="openProgram('${p.id}')">
+    <div class="prog-hero" style="background:${programGrad(p)};">
+      ${pill ? `<span class="prog-pill">${pill}</span>` : ''}
+      <div class="prog-hero-title">${escapeHtml(p.title)}</div>
+    </div>
+    <div class="prog-card-body">
+      <div class="prog-instr">${escapeHtml(ins.primary)}${ins.extra ? ` <span style="color:var(--ink-4);">· +${ins.extra} more</span>` : ''}</div>
+      <div class="prog-count">${s.doneCount} of ${s.total} classes</div>
+      <div class="prog-bar"><i style="width:${s.pct}%;"></i></div>
+      ${btn}
+    </div>
+  </div>`;
+}
+function setProgramFilter(f) { State.programFilter = f; renderPrograms(); }
+function startNextClass(programId) {
+  const p = State.programs.find(x => x.id === programId);
+  if (!p) return;
+  const c = programNextClass(p);
+  if (c) openClassInfo(programId, c.ride_id); else openProgram(programId);
+}
+
+// ---- Program detail: full-page Overview + per-week class lists ----
+function openProgram(programId) {
+  const p = State.programs.find(x => x.id === programId);
+  if (!p) return;
+  State.currentProgramId = programId;
+  State.programTab = 'overview';
+  renderProgramDetail();
+  switchScreen('program-detail');
+}
+function renderProgramDetail() {
+  const host = document.getElementById('programDetailContent');
+  const p = State.programs.find(x => x.id === State.currentProgramId);
+  if (!host || !p) return;
+  const s = programStats(p);
+  const done = State.programProgress[p.id] || new Set();
+  const weekComplete = (w) => {
+    const cs = p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK);
+    return cs.length && cs.every(c => done.has(c.ride_id));
+  };
+  let tabs = `<button class="pd-tab ${State.programTab === 'overview' ? 'active' : ''}" onclick="switchProgramTab('overview')">Overview</button>`;
+  for (let w = 0; w < s.weeks; w++) {
+    tabs += `<button class="pd-tab ${State.programTab === w ? 'active' : ''}" onclick="switchProgramTab(${w})">Week ${w + 1}${weekComplete(w) ? ' ✓' : ''}</button>`;
+  }
+  const panel = State.programTab === 'overview' ? programOverviewPanel(p, s) : programWeekPanel(p, State.programTab);
+  const nc = programNextClass(p);
+  const startBar = nc
+    ? `<div class="pd-startbar"><button class="pd-start-btn" onclick="openClassInfo('${p.id}','${nc.ride_id}')">▶ Start next class</button></div>`
+    : `<div class="pd-startbar"><button class="pd-start-btn done" disabled>✓ Program complete</button></div>`;
+  host.innerHTML = `
+    <div class="pd-hero" style="background:${programGrad(p)};">
+      <button class="pd-back" onclick="switchScreen('programs')" aria-label="Back">‹</button>
+      <div class="pd-hero-title">${escapeHtml(p.title)}</div>
+    </div>
+    <div class="pd-tabs">${tabs}</div>
+    <div class="pd-panel" id="pdPanel">${panel}</div>
+    ${startBar}`;
+}
+function switchProgramTab(tab) {
+  State.programTab = tab;
+  const p = State.programs.find(x => x.id === State.currentProgramId);
+  if (!p) return;
+  const s = programStats(p);
+  document.querySelectorAll('#screen-program-detail .pd-tab').forEach((el, idx) => {
+    const key = idx === 0 ? 'overview' : (idx - 1);
+    el.classList.toggle('active', key === tab);
+  });
+  const panel = document.getElementById('pdPanel');
+  if (panel) panel.innerHTML = tab === 'overview' ? programOverviewPanel(p, s) : programWeekPanel(p, tab);
+  window.scrollTo(0, 0);
+}
+function programOverviewPanel(p, s) {
+  const ins = programInstructors(p);
+  const durStr = s.minDur ? (s.minDur === s.maxDur ? `${s.minDur}` : `${s.minDur}-${s.maxDur}`) : '—';
+  const perWeek = s.perWeekMin === s.perWeekMax ? `${s.perWeekMax}x` : `${s.perWeekMin}-${s.perWeekMax}x`;
+  return `
+    <div class="pd-count-card">
+      <div class="pd-count"><b>${s.doneCount}</b><span>/${s.total} classes</span></div>
+      <div class="prog-bar"><i style="width:${s.pct}%;"></i></div>
+    </div>
+    <div class="pd-stat-row">
+      <div class="pd-stat"><b>${s.total}</b><span>classes</span></div>
+      <div class="pd-stat"><b>${s.weeks}</b><span>weeks</span></div>
+      <div class="pd-stat"><b>${perWeek}</b><span>per week</span></div>
+      <div class="pd-stat"><b>${durStr}</b><span>minutes</span></div>
+    </div>
+    <div class="pd-about">
+      <div class="pd-about-instr">${escapeHtml(ins.primary)}${ins.extra ? ` <span style="color:var(--ink-4);">· +${ins.extra} more</span>` : ''}</div>
+      ${p.subtitle ? `<p>${escapeHtml(p.subtitle)}</p>` : ''}
+    </div>`;
+}
+function programWeekPanel(p, w) {
+  const done = State.programProgress[p.id] || new Set();
+  const nc = programNextClass(p);
+  const grad = programGrad(p);
+  const cs = p.classes.slice(w * PROGRAM_PER_WEEK, (w + 1) * PROGRAM_PER_WEEK);
+  if (!cs.length) return `<div class="tiny" style="padding:24px;text-align:center;color:var(--ink-4);">No classes in this week.</div>`;
+  return cs.map((c, idx) => {
+    const isDone = done.has(c.ride_id);
+    const isNext = nc && c.ride_id === nc.ride_id;
+    const badge = isDone ? `<span class="prog-pill done">✓ Completed</span>` : (isNext ? `<span class="prog-pill">Next Class</span>` : '');
+    return `<div class="pd-day">
+      <div class="pd-day-label">Day ${idx + 1}</div>
+      <div class="pd-class ${isDone ? 'is-done' : ''}" style="background:${grad};" onclick="openClassInfo('${p.id}','${c.ride_id}')">
+        ${badge}
+        <div class="pd-class-title">${escapeHtml(c.title)}</div>
+        <div class="pd-class-instr">${escapeHtml(c.instructor || '')}${c.duration_min ? ` · ${c.duration_min} min` : ''}</div>
+        <button class="pd-class-btn" onclick="event.stopPropagation();openClassInfo('${p.id}','${c.ride_id}')">${isDone ? 'View' : 'Start'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function openClassInfo(programId, rideId) {
+  const p = State.programs.find(x => x.id === programId);
+  if (!p) return;
+  const c = p.classes.find(x => x.ride_id === rideId);
+  if (!c) return;
+  const isDone = (State.programProgress[p.id] || new Set()).has(c.ride_id);
+  const html = `
+    <div style="margin-bottom:14px;">
+      <div class="tiny" style="color:var(--ink-4);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">${escapeHtml(p.title)} · Class ${c.order}</div>
+      <div style="font-size:20px;font-weight:700;line-height:1.2;">${escapeHtml(c.title)}</div>
+      <div class="tiny" style="color:var(--ink-3);margin-top:6px;">${escapeHtml(c.instructor || 'Various')}${c.duration_min ? ` · ${c.duration_min} min` : ''}</div>
+    </div>
+    <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <span style="width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:${isDone ? 'var(--accent)' : 'var(--paper-3)'};color:${isDone ? 'var(--accent-ink)' : 'var(--ink-4)'};">${isDone ? '✓' : '•'}</span>
+      <div class="tiny" style="color:var(--ink-3);">${isDone ? 'Completed — synced from your Peloton history.' : 'Not yet completed. Take this class in the Peloton app; it’ll tick off here after your next sync.'}</div>
+    </div>
+    <button class="btn primary block" onclick="closeSheet();switchScreen('exercise');">Go to Train to sync</button>`;
+  openSheet('Class details', html);
 }
 
 // ============================================================
