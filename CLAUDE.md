@@ -4,6 +4,13 @@ Single-user athletic weight-loss PWA. Static frontend + Supabase (Postgres + RLS
 + Deno Edge Functions. Deployed via GitHub Pages (silkham/Fitnesstracker →
 https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys.
 
+- **`.nojekyll` is required** (repo root). Pages is `build_type: legacy` (Jekyll);
+  without `.nojekyll` it ran the site through Jekyll and builds failed
+  intermittently ("Page build failed"), stranding the live site on the last good
+  build while `git push` looked successful. If a push doesn't go live, check
+  `gh api repos/silkham/Fitnesstracker/pages/builds/latest` for status/errored —
+  don't assume it's a browser cache.
+
 ## Architecture (most important)
 - The frontend is now THREE files: `index.html` (markup only, ~230 lines),
   `styles.css` (the design system), and `app.js` (the ~4,700-line application logic,
