@@ -370,6 +370,110 @@ Deno.serve(async (req) => {
   }]);
 
   // ============================================================
+  // REST PROBE (flag-gated, exploratory — safe to delete once the Programs
+  // source is found). Fetches arbitrary URL(s) with the member's Bearer token
+  // and reports status/content-type/body snippet. Used to hunt for whichever
+  // host now serves Programs (api-teams.* exists, so other
+  // api-<name>.prod.k8s.onepeloton.com hosts may too). Touches NO DB tables
+  // and short-circuits before every sync path.
+  // POST { restProbe: { url:"https://..." } } or { urls:[...] } (max 12)
+  //   optional: method, body (JSON re-serialized), headers (merged over
+  //   defaults; null/"" value DELETES that header).
+  // ============================================================
+  if (reqBody?.restProbe && typeof reqBody.restProbe === "object") {
+    const rp = reqBody.restProbe;
+    const urls: string[] = Array.isArray(rp.urls) ? rp.urls.filter((u: unknown) => typeof u === "string")
+      : (typeof rp.url === "string" ? [rp.url] : []);
+    if (!urls.length) return json({ ok: false, error: "restProbe: url or urls required" }, 400);
+    const results: any[] = [];
+    for (const url of urls.slice(0, 12)) {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${access}`, Accept: "application/json",
+        "User-Agent": UA, "Peloton-Platform": "web",
+      };
+      if (rp.body != null) headers["Content-Type"] = "application/json";
+      if (rp.headers && typeof rp.headers === "object") {
+        for (const [k, v] of Object.entries(rp.headers)) { if (v == null || v === "") delete headers[k]; else headers[k] = String(v); }
+      }
+      try {
+        const r = await fetch(url, {
+          method: rp.method ?? (rp.body != null ? "POST" : "GET"), headers,
+          body: rp.body != null ? JSON.stringify(rp.body) : undefined,
+          signal: AbortSignal.timeout(8000),
+        });
+        const text = await r.text();
+        results.push({ url, status: r.status, contentType: r.headers.get("content-type"), bodySnippet: text.slice(0, 600) });
+      } catch (e) {
+        results.push({ url, error: String(e).slice(0, 200) });
+      }
+    }
+    return json({ ok: true, restProbe: true, results });
+  }
+
+  // ============================================================
+  // SCHEDULE mode — upcoming LIVE classes for a favourite instructor.
+  // Ephemeral: fetches Peloton's live schedule, filters by instructor name,
+  // and returns a clean list straight to the app (writes NO DB rows).
+  // POST { schedule: true, instructor: "Bradley Rose" }
+  // Response includes `tried`/`endpoint` diagnostics so a miss is debuggable.
+  // ============================================================
+  if (reqBody?.schedule === true) {
+    const favRaw = typeof reqBody.instructor === "string" ? reqBody.instructor.trim() : "";
+    const favKey = foldName(favRaw);
+    if (!favKey) return json({ ok: false, schedule: true, error: "instructor required" }, 400);
+
+    // instructor id → display name (for filtering + labels)
+    const instrById: Record<string, string> = {};
+    try {
+      const il = await api(access, "api/instructor?limit=100&page=0");
+      for (const i of (il.data ?? [])) instrById[i.id] = i.name ?? [i.first_name, i.last_name].filter(Boolean).join(" ");
+    } catch (_e) { /* names may still arrive inline on the schedule payload */ }
+
+    // Try candidate live-schedule endpoints; keep the first with a non-empty data array.
+    const candidates = ["api/v3/ride/live", "api/ride/live", "api/v2/ride/live", "api/all_live_class"];
+    let raw: any = null, used = "";
+    const tried: any[] = [];
+    for (const path of candidates) {
+      try {
+        const r = await api(access, path);
+        const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : null);
+        tried.push({ path, ok: true, count: Array.isArray(arr) ? arr.length : null });
+        if (Array.isArray(arr) && arr.length) { raw = r; used = path; break; }
+        if (Array.isArray(arr) && !raw) { raw = r; used = path; }  // remember an empty-but-valid shape
+      } catch (e) { tried.push({ path, ok: false, err: String(e).slice(0, 120) }); }
+    }
+    if (!raw) return json({ ok: false, schedule: true, error: "no live-schedule endpoint responded", tried });
+
+    const items = Array.isArray(raw.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+    const ridesMap: Record<string, any> = {};
+    for (const rd of (raw.rides ?? [])) ridesMap[rd.id] = rd;  // some payloads carry a joined rides map
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    const classes: any[] = [];
+    for (const it of items) {
+      const ride = it.ride ?? ridesMap[it.ride_id] ?? it;
+      const sched = Number(it.scheduled_start_time ?? it.start_time ?? ride.scheduled_start_time ?? 0);
+      if (!sched || sched < nowSec - 3600) continue;  // upcoming only (1h grace for live-now)
+      const instrId = ride.instructor_id ?? it.instructor_id;
+      const nm = instrById[instrId] ?? ride.instructor?.name ?? "";
+      const nmKey = foldName(nm);
+      if (nmKey !== favKey && !nmKey.includes(favKey)) continue;
+      const { date, time } = localParts(sched, TZ);
+      classes.push({
+        id: String(it.id ?? ride.id ?? sched),
+        ride_id: ride.id ?? it.ride_id ?? null,
+        title: ride.title ?? "Live class",
+        discipline: normDiscipline(ride.fitness_discipline),
+        duration_min: ride.duration ? Math.round(ride.duration / 60) : null,
+        start_unix: sched, date, time,
+        instructor: nm || favRaw,
+      });
+    }
+    classes.sort((a, b) => a.start_unix - b.start_unix);
+    return json({ ok: true, schedule: true, instructor: favRaw, endpoint: used, count: classes.length, tried, classes });
+  }
+
+  // ============================================================
   // PROGRAM (GraphQL) — fetch a program's ordered class list directly.
   // Programs are GraphQL-only (no REST). Schema is fully mapped:
   //   program(programId:String!) / programsById(programIds:[String!]!) → Program

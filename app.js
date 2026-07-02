@@ -33,6 +33,8 @@ const State = {
   programFilter: 'all', // Programs tab: all | inprogress | completed
   currentProgramId: null, // program open in the detail screen
   programTab: 'overview', // detail screen: 'overview' | week index (0-based)
+  planTab: 'program',   // Plan screen: program | instructor
+  instructorSchedule: null, // { instructor, classes:[...] } | 'loading' | 'error' — cache for the Instructor sub-view
 };
 
 // ============================================================
@@ -41,7 +43,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.5.3';
+const APP_VERSION = 'Stride · v4.6';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -797,6 +799,26 @@ function programNextClass(p) {
   return p.classes.find(c => !done.has(c.ride_id)) || null;
 }
 
+// ---- Plan screen: Program ⇄ Instructor toggle ----
+function renderPlan() {
+  const tab = State.planTab || 'program';
+  const segP = document.getElementById('planSegProgram');
+  const segI = document.getElementById('planSegInstructor');
+  if (segP) segP.classList.toggle('active', tab === 'program');
+  if (segI) segI.classList.toggle('active', tab === 'instructor');
+  const cP = document.getElementById('programsContent');
+  const cI = document.getElementById('instructorContent');
+  if (cP) cP.classList.toggle('hide', tab !== 'program');
+  if (cI) cI.classList.toggle('hide', tab !== 'instructor');
+  if (tab === 'program') renderPrograms(); else renderInstructor();
+}
+function switchPlanTab(name) {
+  State.planTab = name;
+  renderPlan();
+  // lazy-load the live schedule the first time the Instructor tab is opened
+  if (name === 'instructor' && State.instructorSchedule == null) fetchInstructorSchedule();
+}
+
 // ---- Programs tab: filterable list of hero cards ----
 function renderPrograms() {
   const sub = document.getElementById('programsSub');
@@ -993,8 +1015,139 @@ function openClassInfo(programId, rideId) {
     </div>
     ${metricsHtml}
     ${striveNote}
-    <button class="btn primary block" onclick="closeSheet();switchScreen('exercise');">Go to Train to sync</button>`;
+    <button class="btn primary block" onclick="closeSheet();switchScreen('exercise');">Go to Training to sync</button>`;
   openSheet('Class details', html);
+}
+
+// ---- Plan → Instructor: favourite instructor's upcoming LIVE classes ----
+async function fetchInstructorSchedule() {
+  const m = activeMember();
+  const fav = m && m.favourite_instructor ? m.favourite_instructor.trim() : '';
+  if (!fav) { State.instructorSchedule = { instructor: '', classes: [] }; renderInstructor(); return; }
+  State.instructorSchedule = 'loading';
+  renderInstructor();
+  try {
+    const cfg = getConfig();
+    const { data: { session } } = await State.client.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { State.instructorSchedule = 'error'; renderInstructor(); return; }
+    const res = await fetch(`${cfg.url}/functions/v1/peloton-ingest`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, apikey: cfg.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedule: true, instructor: fav }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.ok) { console.error('instructor schedule', res.status, out); State.instructorSchedule = 'error'; }
+    else State.instructorSchedule = { instructor: out.instructor || fav, classes: out.classes || [], endpoint: out.endpoint };
+  } catch (e) {
+    console.error('fetchInstructorSchedule', e);
+    State.instructorSchedule = 'error';
+  }
+  renderInstructor();
+}
+
+function instructorDayLabel(iso) {
+  if (iso === todayISO()) return 'Today';
+  if (iso === isoDateAddDays(todayISO(), 1)) return 'Tomorrow';
+  return `${dayLabel(iso)} ${shortDate(iso)}`;
+}
+
+function renderInstructor() {
+  const host = document.getElementById('instructorContent');
+  if (!host) return;
+  const m = activeMember();
+  const fav = m && m.favourite_instructor ? m.favourite_instructor.trim() : '';
+  const sub = document.getElementById('programsSub');
+
+  if (!fav) {
+    if (sub) sub.textContent = 'Upcoming live classes';
+    host.innerHTML = `<div class="card" style="text-align:center;padding:28px 16px;color:var(--ink-3);">
+      <div style="font-size:14px;margin-bottom:4px;">No favourite instructor set</div>
+      <div class="tiny" style="color:var(--ink-4);margin-bottom:12px;">Set one on the You page to see their upcoming live classes.</div>
+      <button class="btn ghost block" onclick="switchScreen('profile')">Open You</button>
+    </div>`;
+    return;
+  }
+  if (sub) sub.textContent = `${fav} · upcoming live`;
+
+  const st = State.instructorSchedule;
+  if (st === 'loading' || st == null) {
+    host.innerHTML = `<div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>
+      <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>`;
+    return;
+  }
+  if (st === 'error') {
+    host.innerHTML = `<div class="card" style="text-align:center;padding:24px 16px;color:var(--ink-3);">
+      <div style="font-size:14px;margin-bottom:4px;">Couldn’t load the live schedule</div>
+      <div class="tiny" style="color:var(--ink-4);margin-bottom:12px;">Peloton’s schedule didn’t respond. Try again in a moment.</div>
+      <button class="btn block" onclick="fetchInstructorSchedule()">Try again</button>
+    </div>`;
+    return;
+  }
+
+  const classes = st.classes || [];
+  if (!classes.length) {
+    host.innerHTML = `<div class="card" style="text-align:center;padding:24px 16px;color:var(--ink-3);">
+      <div style="font-size:14px;margin-bottom:4px;">No upcoming live classes</div>
+      <div class="tiny" style="color:var(--ink-4);margin-bottom:12px;">${escapeHtml(st.instructor || fav)} has nothing on the live schedule right now.</div>
+      <button class="btn ghost block" onclick="fetchInstructorSchedule()">Refresh</button>
+    </div>`;
+    return;
+  }
+
+  // Group by local day, in chronological order.
+  const byDay = [];
+  const seen = {};
+  classes.forEach(c => {
+    if (!seen[c.date]) { seen[c.date] = { date: c.date, items: [] }; byDay.push(seen[c.date]); }
+    seen[c.date].items.push(c);
+  });
+
+  let html = '';
+  byDay.forEach(day => {
+    html += `<div class="eyebrow" style="margin:16px 2px 8px;">${instructorDayLabel(day.date)}</div>`;
+    day.items.forEach(c => {
+      const added = State.workouts.some(w => w.status === 'planned' && w.peloton_ride_id && w.peloton_ride_id === c.ride_id && w.planned_for === c.date);
+      const meta = [sessionTypeLabel(c.discipline), c.duration_min ? `${c.duration_min} min` : ''].filter(Boolean).join(' · ');
+      const btn = added
+        ? `<button class="card-action" disabled style="opacity:0.6;">Added ✓</button>`
+        : `<button class="card-action" onclick="addLiveClassToSchedule('${c.id}')">+ Schedule</button>`;
+      html += `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <div style="text-align:center;flex:none;width:52px;">
+          <div style="font-size:17px;font-weight:800;line-height:1;">${escapeHtml(c.time || '')}</div>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:600;line-height:1.2;">${escapeHtml(c.title)}</div>
+          <div class="tiny" style="color:var(--ink-4);margin-top:2px;">${escapeHtml(meta)}</div>
+        </div>
+        ${btn}
+      </div>`;
+    });
+  });
+  host.innerHTML = html;
+}
+
+async function addLiveClassToSchedule(id) {
+  const st = State.instructorSchedule;
+  if (!st || !st.classes) return;
+  const c = st.classes.find(x => x.id === id);
+  if (!c) return;
+  const m = activeMember();
+  if (!m) return;
+  const dupe = State.workouts.some(w => w.status === 'planned' && w.peloton_ride_id && w.peloton_ride_id === c.ride_id && w.planned_for === c.date);
+  if (dupe) { toast('Already in your schedule'); return; }
+  const row = {
+    household_id: State.householdId, member_id: m.id,
+    planned_for: c.date, specific_time: c.time || null,
+    session_type: c.discipline || 'ride', duration_min: c.duration_min || null,
+    status: 'planned', source: 'peloton_live',
+    peloton_ride_id: c.ride_id || null, class_title: c.title || null, instructor: c.instructor || null,
+  };
+  const { data, error } = await State.client.from('workouts').insert([row]).select();
+  if (error) { console.error('addLiveClassToSchedule', error); toast('Couldn’t add to schedule'); return; }
+  if (data) data.forEach(w => State.workouts.push(w));
+  toast('Added to your schedule');
+  renderInstructor();
 }
 
 // ============================================================
@@ -1465,7 +1618,7 @@ function renderAll() {
   renderToday();
   renderExercise();
   renderProgress();
-  renderPrograms();
+  renderPlan();
   renderMeals();
   renderProfile();
   // Post-render: animate any [data-num-id] spans whose value changed
