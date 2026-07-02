@@ -27,7 +27,7 @@ const State = {
   realtimeChannel: null,
   isOnline: navigator.onLine,
   programs: [],         // [{id, title, subtitle, classes:[{order,ride_id,title,instructor,duration_min}]}]
-  programProgress: {},  // {program_id: Set<peloton_ride_id>} — completed classes per program
+  programProgress: {},  // {program_id: Set<slot index>} — completed slots; repeated rides tick one slot per completion
   trainingTab: 'ride',  // Progress screen: ride | strength discipline toggle
   oneRmLift: null,      // Progress screen: exercise shown in the 1RM trend
   programFilter: 'all', // Programs tab: all | inprogress | completed
@@ -44,7 +44,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.8';
+const APP_VERSION = 'Stride · v4.8.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -747,18 +747,35 @@ async function loadPrograms() {
         image: imgByRide[c.ride_id] || null, week: c.week || null, day: c.day || null,
       });
     });
-    State.programs = (progs || []).map(p => ({ id: p.id, title: p.title, subtitle: p.subtitle, image_url: p.image_url || null, classes: byProgram[p.id] || [] }));
+    // slot = position within the program, the identity progress is keyed by
+    // (order_num comes from the DB and isn't guaranteed unique/contiguous)
+    State.programs = (progs || []).map(p => ({
+      id: p.id, title: p.title, subtitle: p.subtitle, image_url: p.image_url || null,
+      classes: (byProgram[p.id] || []).map((c, i) => ({ ...c, slot: i })),
+    }));
   } catch (e) { State.programs = State.programs || []; }
 }
 
-// Completed-ride_id sets per program, keyed by program id. Refreshed after
+// One completed workout ticks ONE slot. Count completions per ride, then
+// consume them across the program's slots in order — a ride repeated in later
+// weeks (e.g. Stronger You's stretches) only ticks as many slots as it was
+// actually done. Pure — unit-tested with jsc.
+function programSlotTicks(classes, doneRideIds) {
+  const left = {};
+  doneRideIds.forEach(id => { left[id] = (left[id] || 0) + 1; });
+  const done = new Set();
+  classes.forEach(c => { if (left[c.ride_id] > 0) { done.add(c.slot); left[c.ride_id]--; } });
+  return done;
+}
+
+// Completed-slot sets per program, keyed by program id. Refreshed after
 // every Peloton sync (mirrors loadPelotonHealth).
 async function loadProgramProgress() {
   for (const p of State.programs) {
     try {
-      const ids = p.classes.map(c => c.ride_id);
+      const ids = [...new Set(p.classes.map(c => c.ride_id))];
       const { data } = await State.client.from('workouts').select('peloton_ride_id').eq('status', 'done').in('peloton_ride_id', ids);
-      State.programProgress[p.id] = new Set((data || []).map(w => w.peloton_ride_id));
+      State.programProgress[p.id] = programSlotTicks(p.classes, (data || []).map(w => w.peloton_ride_id));
     } catch (e) { State.programProgress[p.id] = State.programProgress[p.id] || new Set(); }
   }
 }
@@ -808,7 +825,7 @@ function programWeekClasses(p, w) {
 function programStats(p) {
   const done = State.programProgress[p.id] || new Set();
   const total = p.classes.length;
-  const doneCount = p.classes.filter(c => done.has(c.ride_id)).length;
+  const doneCount = p.classes.filter(c => done.has(c.slot)).length;
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
   const weeks = p.classes.some(c => c.week)
     ? Math.max(...p.classes.map(c => c.week || 1))
@@ -830,7 +847,7 @@ function programInstructors(p) {
 }
 function programNextClass(p) {
   const done = State.programProgress[p.id] || new Set();
-  return p.classes.find(c => !done.has(c.ride_id)) || null;
+  return p.classes.find(c => !done.has(c.slot)) || null;
 }
 
 // ---- Instructors: favourites list + Peloton photo directory ----
@@ -990,7 +1007,7 @@ function renderProgramDetail() {
   const done = State.programProgress[p.id] || new Set();
   const weekComplete = (w) => {
     const cs = programWeekClasses(p, w);
-    return cs.length && cs.every(c => done.has(c.ride_id));
+    return cs.length && cs.every(c => done.has(c.slot));
   };
   let tabs = `<button class="pd-tab ${State.programTab === 'overview' ? 'active' : ''}" onclick="switchProgramTab('overview')">Overview</button>`;
   for (let w = 0; w < s.weeks; w++) {
@@ -1057,8 +1074,8 @@ function programWeekPanel(p, w) {
   if (!cs.length) return `<div class="tiny" style="padding:24px;text-align:center;color:var(--ink-4);">No classes in this week.</div>`;
 
   const classCard = (c) => {
-    const isDone = done.has(c.ride_id);
-    const isNext = nc && c.ride_id === nc.ride_id;
+    const isDone = done.has(c.slot);
+    const isNext = nc && c.slot === nc.slot;
     const badge = isDone ? `<span class="prog-pill done">✓ Completed</span>` : (isNext ? `<span class="prog-pill">Next Class</span>` : '');
     const meta = `
       <div class="pd-class-title">${escapeHtml(c.title)}</div>
@@ -1093,7 +1110,10 @@ function openClassInfo(programId, rideId) {
   if (!p) return;
   const c = p.classes.find(x => x.ride_id === rideId);
   if (!c) return;
-  const isDone = (State.programProgress[p.id] || new Set()).has(c.ride_id);
+  // Info page is per-ride, not per-slot: "completed" means the member has done
+  // this ride at least once (any slot of it ticked).
+  const prog = State.programProgress[p.id] || new Set();
+  const isDone = p.classes.some(x => x.ride_id === rideId && prog.has(x.slot));
 
   // Join to the member's actual completed workout(s) for this class — most recent
   // take wins. (State.workouts is a rolling ~90-day window, so very old completions
