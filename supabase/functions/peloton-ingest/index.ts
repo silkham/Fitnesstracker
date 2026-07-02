@@ -206,6 +206,8 @@ function normDiscipline(d: unknown): string {
   const s = String(d ?? "").toLowerCase();
   if (s.includes("cycl") || s.includes("bike")) return "ride";
   if (s.includes("strength") || s.includes("bootcamp")) return "strength";
+  if (s.includes("box")) return "boxing";
+  if (s.includes("row")) return "row";
   if (s.includes("yoga")) return "yoga";
   if (s.includes("stretch") || s.includes("mobility")) return "stretch";
   if (s.includes("run")) return "run";
@@ -283,6 +285,118 @@ function dmyDay(s: string): number | null {
   return Math.floor(Date.UTC(y, +m[2] - 1, +m[1]) / 1000 / 86400);
 }
 
+// ---- program-index enrichment helpers ----------------------
+// PeloBuddy article HTML → the metadata shown on the Add-a-program preview
+// (description, class count, weeks) plus filter facets (discipline, instructor,
+// level, language). Structural fields (count/weeks) are read from the article;
+// discipline/instructor/level/language are parsed from the curated title, which
+// reliably carries them ("Rebecca Kennedy's Intermediate 5 Day Split Strength
+// Program with …"). Ambiguous disciplines fall back to a ride-details lookup.
+function decodeEnt(s: string): string {
+  return s
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+    .replace(/&#8217;/g, "’").replace(/&#8216;/g, "‘")
+    .replace(/&#8211;/g, "–").replace(/&#8212;/g, "—")
+    .replace(/&#8220;/g, "“").replace(/&#8221;/g, "”")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
+}
+function metaContent(html: string, prop: string): string | null {
+  return html.match(new RegExp(`<meta[^>]+property=["']${prop}["'][^>]+content=["']([^"']*)["']`, "i"))?.[1]
+    ?? html.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+property=["']${prop}["']`, "i"))?.[1] ?? null;
+}
+// Walk classId links + Week/Day headings into ordered slots (shared by the
+// importer and the enrichment pass): each classId picks up the nearest
+// preceding Week/Day heading; adjacent duplicate anchors collapse.
+function classSlots(html: string): { slots: { ride_id: string; week: number | null; day: number | null }[]; sawWeek: boolean; sawDay: boolean } {
+  type Mark = { pos: number; kind: "week" | "day" | "cls"; val: number | string };
+  const marks: Mark[] = [];
+  for (const mm of html.matchAll(/\bWeek\s+(\d+)/gi)) marks.push({ pos: mm.index!, kind: "week", val: +mm[1] });
+  for (const mm of html.matchAll(/\bDay\s+(\d+)/gi)) marks.push({ pos: mm.index!, kind: "day", val: +mm[1] });
+  for (const mm of html.matchAll(/classId=([0-9a-fA-F]{32})/g)) marks.push({ pos: mm.index!, kind: "cls", val: mm[1].toLowerCase() });
+  marks.sort((a, b) => a.pos - b.pos);
+  const sawWeek = marks.some((x) => x.kind === "week");
+  const sawDay = marks.some((x) => x.kind === "day");
+  let curWeek: number | null = null, curDay: number | null = null;
+  const slots: { ride_id: string; week: number | null; day: number | null }[] = [];
+  for (const x of marks) {
+    if (x.kind === "week") { curWeek = x.val as number; curDay = null; }
+    else if (x.kind === "day") { curDay = x.val as number; }
+    else {
+      const week = curWeek ?? (sawDay && !sawWeek ? 1 : null);
+      const prev = slots[slots.length - 1];
+      if (prev && prev.ride_id === x.val && prev.week === week && prev.day === curDay) continue;
+      slots.push({ ride_id: x.val as string, week, day: curDay });
+    }
+  }
+  return { slots, sawWeek, sawDay };
+}
+// Strip a trailing "(German)"/"(in Spanish)"/"(English)" tag before name parsing.
+function stripLangTag(t: string): string {
+  return t.replace(/\s*\((?:in\s+)?(?:german|deutsch|spanish|español|espanol|english)[^)]*\)\s*$/i, "").trim();
+}
+function titleLanguage(t: string): string {
+  if (/\b(german|deutsch)\b/i.test(t)) return "de";
+  if (/\b(spanish|español|espanol)\b/i.test(t)) return "es";
+  return "en";
+}
+function titleLevel(t: string): string | null {
+  if (/\bbeginner\b/i.test(t)) return "Beginner";
+  if (/\bintermediate\b/i.test(t)) return "Intermediate";
+  if (/\badvanced\b/i.test(t)) return "Advanced";
+  return null;
+}
+// Ordered keyword match — a headline "split"/strength beats a co-mentioned
+// "ride"/"hike" (e.g. "3-Day Split + Ride Program" → strength).
+function titleDiscipline(t: string): string {
+  const s = t.toLowerCase();
+  if (/\byoga\b/.test(s)) return "yoga";
+  if (/\bbox(?:ing)?\b|\bhooked\b/.test(s)) return "boxing";
+  if (/\brow(?:ing)?\b/.test(s)) return "row";
+  if (/\bsplit\b|strength|\barms?\b|bootcamp|\bcore\b|glute|\blift\b/.test(s)) return "strength";
+  if (/power zone|\bcycl|\bbike\b|\bride\b|\bclimb\b|\bpz\b/.test(s)) return "ride";
+  if (/\brun\b|\brunning\b|marathon|26\.2|13\.1|\bpace\b|\b\d+k\b/.test(s)) return "run";
+  if (/\bhike\b|\bwalk/.test(s)) return "walk";
+  if (/stretch|mobility|posture|\bacl\b|recovery/.test(s)) return "stretch";
+  if (/medit|\bsleep\b|stress|anxiety|\bcalm\b|breath|mindful/.test(s)) return "meditation";
+  return "other";
+}
+// Instructor name(s) from the title: "… with A & B", "w/ A", or "Name's …".
+function titleInstructors(rawTitle: string): string[] {
+  const t = stripLangTag(rawTitle);
+  let namePart: string | null = null;
+  const mWith = t.match(/\bw(?:ith|\/)\s+(.+)$/i);
+  if (mWith) namePart = mWith[1];
+  else {
+    const mPoss = t.match(/^([A-Z][\p{L}.'’-]+(?:\s+[A-Z][\p{L}.'’-]+){0,2})['’]s\b/u);
+    if (mPoss) namePart = mPoss[1];
+  }
+  if (!namePart) return [];
+  return namePart
+    .split(/\s*(?:&|,|\band\b)\s*/i)
+    .map((n) => n.trim().replace(/\s+/g, " "))
+    .filter((n) => /^[A-Z][\p{L}.'’-]+(?:\s+[\p{L}.'’-]+){0,3}$/u.test(n) && n.length >= 3);
+}
+function enrichFromArticle(title: string, html: string): {
+  description: string | null; class_count: number; weeks: number;
+  discipline: string; instructor: string | null; level: string | null; language: string;
+  slots: { ride_id: string; week: number | null; day: number | null }[];
+} {
+  const ogd = metaContent(html, "og:description");
+  const { slots, sawWeek } = classSlots(html);
+  const class_count = slots.length;
+  const weeks = sawWeek ? Math.max(1, ...slots.map((s) => s.week ?? 1)) : Math.max(1, Math.ceil(class_count / 5));
+  const instrs = titleInstructors(title);
+  return {
+    description: ogd ? decodeEnt(ogd).trim() : null,
+    class_count, weeks,
+    discipline: titleDiscipline(title),
+    instructor: instrs.length ? instrs.join(", ") : null,
+    level: titleLevel(title),
+    language: titleLanguage(title),
+    slots,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method === "GET") return json({ ok: true, service: "peloton-ingest" });
@@ -343,13 +457,6 @@ Deno.serve(async (req) => {
     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-GB,en;q=0.9",
   };
-  const decodeEnt = (s: string) => s
-    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
-    .replace(/&#8217;/g, "’").replace(/&#8216;/g, "‘")
-    .replace(/&#8211;/g, "–").replace(/&#8212;/g, "—")
-    .replace(/&#8220;/g, "“").replace(/&#8221;/g, "”")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
-
   if (reqBody?.programIndex === true) {
     const r = await fetch("https://www.pelobuddy.com/programs/", { headers: pbHeaders, signal: AbortSignal.timeout(20000) });
     if (!r.ok) return json({ ok: false, error: `programIndex: index fetch ${r.status}` }, 502);
@@ -438,6 +545,57 @@ Deno.serve(async (req) => {
     household_id: HOUSEHOLD_ID, member_id: MEMBER_ID, provider: "peloton",
     refresh_token: refresh, peloton_user_id: uid, updated_at: new Date().toISOString(),
   }]);
+
+  // ============================================================
+  // ENRICH INDEX — backfill program_index metadata for the Add-a-program
+  // preview + filters. For each un-enriched row (or an explicit slug list),
+  // fetch the PeloBuddy article and derive description/class_count/weeks
+  // (structural, from the article) plus discipline/instructor/level/language
+  // (from the curated title). Title-ambiguous disciplines ("other") fall back
+  // to the first class's real fitness_discipline via one ride-details call.
+  // Batched — processes `limit` rows/call (default 20) so one invocation stays
+  // within the edge time budget; drive repeatedly until remainingAfter hits 0.
+  // POST { enrichIndex:true, commit?:bool, limit?:int, slugs?:[...], reenrich?:bool }
+  // ============================================================
+  if (reqBody?.enrichIndex === true) {
+    const commit = reqBody?.commit === true;
+    const limit = Math.max(1, Math.min(60, Number(reqBody?.limit) || 20));
+    const explicit: string[] = Array.isArray(reqBody?.slugs) ? reqBody.slugs.map((s: unknown) => String(s)) : [];
+    const reenrich = reqBody?.reenrich === true;
+    let sel = "program_index?select=slug,title,article_url,enriched_at&order=title";
+    if (explicit.length) sel += `&slug=in.(${explicit.map((s) => encodeURIComponent(s)).join(",")})`;
+    else if (!reenrich) sel += "&enriched_at=is.null";
+    const rows: any[] = await restGet(sel);
+    const remainingBefore = rows.length;
+    const batch = rows.slice(0, limit);
+    const done: any[] = [];
+    for (const row of batch) {
+      try {
+        const ar = await fetch(row.article_url, { headers: pbHeaders, signal: AbortSignal.timeout(20000) });
+        if (!ar.ok) { done.push({ slug: row.slug, error: `article ${ar.status}` }); continue; }
+        const html = await ar.text();
+        const enr = enrichFromArticle(row.title, html);
+        // discipline fallback: resolve "other" from the first class's real discipline
+        if (enr.discipline === "other" && enr.slots.length) {
+          try { const d = await api(access, `api/ride/${enr.slots[0].ride_id}/details`); const rd = d.ride ?? d; enr.discipline = normDiscipline(rd.fitness_discipline); }
+          catch { /* keep "other" if the ride lookup fails */ }
+        }
+        const patch = {
+          description: enr.description, class_count: enr.class_count, weeks: enr.weeks,
+          discipline: enr.discipline, instructor: enr.instructor, level: enr.level, language: enr.language,
+          enriched_at: new Date().toISOString(),
+        };
+        if (commit) {
+          const w = await restWrite("PATCH", `program_index?slug=eq.${encodeURIComponent(row.slug)}`, patch);
+          if (!w.ok) { done.push({ slug: row.slug, error: w.err }); continue; }
+        }
+        done.push({ slug: row.slug, ...patch });
+      } catch (e) { done.push({ slug: row.slug, error: String(e).slice(0, 160) }); }
+    }
+    const okCount = done.filter((d) => !d.error).length;
+    return json({ ok: true, enrichIndex: true, commit, processed: done.length,
+      remainingBefore, remainingAfter: Math.max(0, remainingBefore - (commit ? okCount : 0)), results: done });
+  }
 
   // ============================================================
   // REST PROBE (flag-gated, exploratory — safe to delete once the Programs
@@ -928,6 +1086,21 @@ Deno.serve(async (req) => {
           const pcw = await restWrite("POST", `program_classes?on_conflict=program_id,order_num`, pcRows);
           if (!pcw.ok) return json({ ok: false, error: pcw.err }, 500);
           programCommitted = pcRows.length;
+        }
+        // keep the searchable index row's metadata in sync with this import so
+        // the Add-a-program preview + filters have real data (best-effort;
+        // no-op when the program wasn't sourced from a program_index slug)
+        if (importMeta?.slug) {
+          await restWrite("PATCH", `program_index?slug=eq.${encodeURIComponent(importMeta.slug)}`, {
+            description: importMeta.subtitle ?? null,
+            class_count: importMeta.slots ?? null,
+            weeks: importMeta.weeks_parsed ? Math.max(1, ...results.map((r: any) => r.week ?? 1)) : Math.max(1, Math.ceil((importMeta.slots || 0) / 5)),
+            discipline: titleDiscipline(importMeta.title),
+            instructor: titleInstructors(importMeta.title).join(", ") || null,
+            level: titleLevel(importMeta.title),
+            language: titleLanguage(importMeta.title),
+            enriched_at: new Date().toISOString(),
+          });
         }
       }
     }

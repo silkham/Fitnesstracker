@@ -29,8 +29,10 @@ const State = {
   programs: [],         // [{id, title, subtitle, classes:[{order,ride_id,title,instructor,duration_min}]}]
   programProgress: {},  // {program_id: Set<slot index>} — completed slots; repeated rides tick one slot per completion
   userPrograms: new Set(), // program_ids the signed-in user has added (user_programs table)
-  programIndex: null,   // [{slug,title,article_url,scraped_at}] from program_index — lazy, null until Add screen opens
+  programIndex: null,   // program_index rows (slug,title,article_url + enriched: description,class_count,weeks,discipline,instructor,level,language) — lazy, null until Add screen opens
   programAddQuery: '',  // Add-a-program search text
+  programAddDiscipline: 'all', // Add screen: discipline filter chip
+  programAddInstructor: 'all',  // Add screen: instructor filter dropdown
   importingSlug: null,  // slug currently importing (locks the Add list to one import at a time)
   trainingTab: 'ride',  // Progress screen: ride | strength discipline toggle
   oneRmLift: null,      // Progress screen: exercise shown in the 1RM trend
@@ -48,7 +50,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.9';
+const APP_VERSION = 'Stride · v4.10';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -1022,6 +1024,22 @@ const PROGRAM_SLUG_ALIASES = {
 };
 function programIdForSlug(slug) { return PROGRAM_SLUG_ALIASES[slug] || slug; }
 
+// Discipline codes stored on program_index → display labels for filter chips
+// and the preview sheet (matches the edge function's normDiscipline set).
+const DISCIPLINE_LABELS = {
+  ride: 'Cycling', strength: 'Strength', boxing: 'Boxing', row: 'Rowing',
+  yoga: 'Yoga', stretch: 'Stretch', run: 'Running', walk: 'Walk',
+  meditation: 'Meditation', other: 'Other',
+};
+function disciplineLabel(d) { return DISCIPLINE_LABELS[d] || 'Other'; }
+const LANG_LABELS = { de: 'German', es: 'Spanish', en: 'English' };
+// Distinct instructor names across the index (comma-joined column → set).
+function programIndexInstructors() {
+  const set = new Set();
+  (State.programIndex || []).forEach(r => (r.instructor || '').split(',').forEach(n => { const t = n.trim(); if (t) set.add(t); }));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
 // POST to peloton-ingest as the signed-in user. Returns parsed JSON or null.
 async function callIngest(body) {
   const cfg = getConfig();
@@ -1041,6 +1059,8 @@ async function callIngest(body) {
 
 function openProgramAdd() {
   State.programAddQuery = '';
+  State.programAddDiscipline = 'all';
+  State.programAddInstructor = 'all';
   renderProgramAdd();
   switchScreen('program-add');
   ensureProgramIndex();
@@ -1049,18 +1069,21 @@ function openProgramAdd() {
 // table is empty or over a week old (PeloBuddy adds programs occasionally).
 async function ensureProgramIndex(force = false) {
   if (!force && Array.isArray(State.programIndex) && State.programIndex.length) { renderProgramAdd(); return; }
+  const cols = 'slug,title,article_url,scraped_at,description,class_count,weeks,discipline,instructor,level,language';
   try {
-    let { data } = await State.client.from('program_index').select('slug,title,article_url,scraped_at').order('title');
+    let { data } = await State.client.from('program_index').select(cols).order('title');
     const newest = (data || []).reduce((m, r) => Math.max(m, Date.parse(r.scraped_at) || 0), 0);
     if (force || !data || !data.length || Date.now() - newest > 7 * 86400000) {
       const out = await callIngest({ programIndex: true, commit: true });
-      if (out && out.ok) ({ data } = await State.client.from('program_index').select('slug,title,article_url,scraped_at').order('title'));
+      if (out && out.ok) ({ data } = await State.client.from('program_index').select(cols).order('title'));
     }
     State.programIndex = data || [];
   } catch (e) { State.programIndex = State.programIndex || []; }
   renderProgramAdd();
 }
 function setProgramAddQuery(v) { State.programAddQuery = v; renderProgramAddList(); }
+function setProgramAddDiscipline(d) { State.programAddDiscipline = d; renderProgramAddFilters(); renderProgramAddList(); }
+function setProgramAddInstructor(v) { State.programAddInstructor = v; renderProgramAddList(); }
 function renderProgramAdd() {
   const host = document.getElementById('programAddContent');
   if (!host) return;
@@ -1070,10 +1093,33 @@ function renderProgramAdd() {
       <h1 class="display"><em>Add a program</em></h1>
       <div class="greeting-sub" id="paSub">—</div>
     </div>
-    <input class="input" id="paSearch" type="search" placeholder="Search programs…" autocomplete="off"
-      value="${escapeHtml(State.programAddQuery)}" oninput="setProgramAddQuery(this.value)" style="margin-bottom:12px;">
+    <input class="input" id="paSearch" type="search" placeholder="Search programs or instructors…" autocomplete="off"
+      value="${escapeHtml(State.programAddQuery)}" oninput="setProgramAddQuery(this.value)" style="margin-bottom:10px;">
+    <div id="paFilters"></div>
     <div id="paList"></div>`;
+  renderProgramAddFilters();
   renderProgramAddList();
+}
+// Discipline chips (only the disciplines actually present) + an instructor
+// dropdown, both built from the enriched program_index.
+function renderProgramAddFilters() {
+  const host = document.getElementById('paFilters');
+  const idx = State.programIndex;
+  if (!host || idx == null) return;
+  const counts = {};
+  idx.forEach(r => { const d = r.discipline || 'other'; counts[d] = (counts[d] || 0) + 1; });
+  const order = ['ride', 'strength', 'run', 'yoga', 'stretch', 'meditation', 'walk', 'row', 'boxing', 'other'];
+  const discs = order.filter(d => counts[d]);
+  const df = State.programAddDiscipline;
+  const chip = (id, label, count) => `<button class="prog-chip ${df === id ? 'active' : ''}" onclick="setProgramAddDiscipline('${id}')">${label}${count != null ? ` <span class="prog-chip-n">${count}</span>` : ''}</button>`;
+  const chips = chip('all', 'All', idx.length) + discs.map(d => chip(d, disciplineLabel(d), counts[d])).join('');
+  const instrs = programIndexInstructors();
+  const inst = State.programAddInstructor;
+  const opts = ['<option value="all">All instructors</option>']
+    .concat(instrs.map(n => `<option value="${escapeHtml(n)}" ${inst === n ? 'selected' : ''}>${escapeHtml(n)}</option>`)).join('');
+  host.innerHTML = `
+    <div class="prog-filter pa-chips">${chips}</div>
+    <select class="input pa-instr-select" onchange="setProgramAddInstructor(this.value)">${opts}</select>`;
 }
 function renderProgramAddList() {
   const el = document.getElementById('paList');
@@ -1086,9 +1132,16 @@ function renderProgramAddList() {
       <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>`;
     return;
   }
-  if (sub) sub.textContent = `${idx.length} programs · via PeloBuddy`;
   const q = foldName(State.programAddQuery);
-  const rows = q ? idx.filter(r => foldName(r.title).includes(q)) : idx;
+  const df = State.programAddDiscipline;
+  const inst = State.programAddInstructor;
+  const rows = idx.filter(r => {
+    if (q && !foldName(r.title).includes(q) && !foldName(r.instructor || '').includes(q)) return false;
+    if (df !== 'all' && (r.discipline || 'other') !== df) return false;
+    if (inst !== 'all' && !(r.instructor || '').split(',').map(s => s.trim()).includes(inst)) return false;
+    return true;
+  });
+  if (sub) sub.textContent = `${rows.length} of ${idx.length} programs · via PeloBuddy`;
   if (!rows.length) {
     el.innerHTML = `<div class="tiny" style="text-align:center;padding:28px;color:var(--ink-4);">No programs match.</div>`;
     return;
@@ -1097,21 +1150,49 @@ function renderProgramAddList() {
     const pid = programIdForSlug(r.slug);
     const added = State.userPrograms.has(pid);
     const importing = State.importingSlug === r.slug;
-    const btn = added
-      ? `<button class="pd-class-btn" onclick="event.stopPropagation();openProgram('${pid}')">View</button>`
-      : (importing
-        ? `<button class="pd-class-btn" disabled>Importing…</button>`
-        : `<button class="pd-class-btn" onclick="event.stopPropagation();addProgramFromIndex('${r.slug}')">Add</button>`);
-    return `<div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:10px;${importing ? 'opacity:0.7;' : ''}"
-      onclick="${added ? `openProgram('${pid}')` : `addProgramFromIndex('${r.slug}')`}">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:14px;font-weight:600;">${escapeHtml(r.title)}</div>
-        ${added ? `<div class="tiny" style="color:var(--ink-4);">In your programs</div>` : ''}
+    const bits = [disciplineLabel(r.discipline)];
+    if (r.class_count) bits.push(`${r.class_count} classes`);
+    if (r.level) bits.push(r.level);
+    const meta = added ? 'In your programs' : bits.join(' · ');
+    const cta = importing ? `<span class="pa-cta importing">Importing…</span>`
+      : `<span class="pa-cta">${added ? 'View' : 'Add'} ›</span>`;
+    return `<div class="card pa-row${importing ? ' importing' : ''}" onclick="openProgramPreview('${r.slug}')">
+      <div class="pa-row-main">
+        <div class="pa-row-title">${escapeHtml(r.title)}</div>
+        <div class="pa-row-meta">${escapeHtml(meta)}</div>
       </div>
-      ${btn}
+      ${cta}
     </div>`;
   }).join('');
 }
+// Preview sheet: description + class count + weeks + level, then Add / View + Remove.
+function openProgramPreview(slug) {
+  const r = (State.programIndex || []).find(x => x.slug === slug);
+  if (!r) return;
+  const pid = programIdForSlug(slug);
+  const added = State.userPrograms.has(pid);
+  const importing = State.importingSlug === slug;
+  const pills = [`<span class="pv-pill">${escapeHtml(disciplineLabel(r.discipline))}</span>`];
+  if (r.level) pills.push(`<span class="pv-pill">${escapeHtml(r.level)}</span>`);
+  if (r.language && r.language !== 'en') pills.push(`<span class="pv-pill">${escapeHtml(LANG_LABELS[r.language] || r.language)}</span>`);
+  const stats = [];
+  if (r.class_count) stats.push(`<div class="pv-stat"><b>${r.class_count}</b><span>classes</span></div>`);
+  if (r.weeks) stats.push(`<div class="pv-stat"><b>${r.weeks}</b><span>weeks</span></div>`);
+  const actions = added
+    ? `<button class="btn primary block" onclick="closeSheet();openProgram('${pid}')">View program</button>
+       <button class="btn ghost block" style="margin-top:8px;color:var(--ink-4);" onclick="removeUserProgram('${pid}', true)">Remove from my programs</button>`
+    : (importing
+      ? `<button class="btn primary block" disabled>Importing… (this takes a moment)</button>`
+      : `<button class="btn primary block" onclick="addFromPreview('${slug}')">Add program</button>`);
+  const body = `
+    <div class="pv-pills">${pills.join('')}</div>
+    ${stats.length ? `<div class="pv-stats">${stats.join('')}</div>` : ''}
+    ${r.description ? `<p class="pv-desc">${escapeHtml(r.description)}</p>` : ''}
+    ${r.instructor ? `<div class="pv-instr">With ${escapeHtml(r.instructor)}</div>` : ''}
+    <div class="pv-actions">${actions}</div>`;
+  openSheet(escapeHtml(r.title), body);
+}
+function addFromPreview(slug) { closeSheet(); addProgramFromIndex(slug); }
 // Add = (import into the shared catalog if it isn't there yet) + user_programs
 // row. Import runs the full article→ride-details pipeline: ~10-60s.
 async function addProgramFromIndex(slug) {
@@ -1142,13 +1223,16 @@ async function addProgramFromIndex(slug) {
     renderProgramAddList();
   }
 }
-async function removeUserProgram(programId) {
+async function removeUserProgram(programId, fromAdd) {
   if (!confirm('Remove this program from your list? Your completed classes stay in your history.')) return;
   try { await State.client.from('user_programs').delete().eq('program_id', programId); } catch (e) { /* row may already be gone */ }
   State.userPrograms.delete(programId);
   renderPrograms();
-  switchScreen('programs');
   toast('Program removed');
+  // From the Add-screen preview: stay put, just refresh the sheet away + list.
+  // From a program's Overview: fall back to the Programs list.
+  if (fromAdd) { closeSheet(); renderProgramAddFilters(); renderProgramAddList(); }
+  else { switchScreen('programs'); }
 }
 
 // ---- Program detail: full-page Overview + per-week class lists ----

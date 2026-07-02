@@ -1323,6 +1323,31 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .prog-chip.active { border-color: var(--ink); background: var(--paper-3); color: var(--ink); }
 .prog-chip-n { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 7px; font-size: 11px; line-height: 18px; min-width: 18px; text-align: center; }
 
+/* Add-a-program: horizontally scrollable discipline chips + instructor select */
+.pa-chips { flex-wrap: nowrap; overflow-x: auto; margin-bottom: 10px; padding-bottom: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.pa-chips::-webkit-scrollbar { display: none; }
+.pa-chips .prog-chip { flex: 0 0 auto; }
+.pa-instr-select { margin-bottom: 14px; }
+/* Add-a-program search result row */
+.pa-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; }
+.pa-row.importing { opacity: 0.7; }
+.pa-row-main { flex: 1; min-width: 0; }
+.pa-row-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.pa-row-meta { font-size: 12px; color: var(--ink-4); }
+.pa-cta { flex: 0 0 auto; font-size: 13px; font-weight: 700; color: var(--accent); }
+.pa-cta.importing { color: var(--ink-4); }
+
+/* Program preview sheet (Add-a-program) */
+.pv-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
+.pv-pill { border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.pv-stats { display: flex; gap: 10px; margin: 14px 0 6px; }
+.pv-stat { flex: 1; background: var(--paper-2); border-radius: 14px; padding: 12px; text-align: center; }
+.pv-stat b { display: block; font-family: 'Archivo Expanded', 'Archivo', sans-serif; font-size: 22px; font-weight: 800; }
+.pv-stat span { font-size: 12px; color: var(--ink-4); }
+.pv-desc { font-size: 14px; line-height: 1.5; color: var(--ink-2); margin: 14px 0 4px; }
+.pv-instr { font-size: 13px; color: var(--ink-4); margin-bottom: 6px; }
+.pv-actions { margin-top: 18px; }
+
 /* list hero card */
 .prog-card { border-radius: 16px; overflow: hidden; margin-bottom: 16px; background: var(--glass); border: 1px solid var(--glass-line); cursor: pointer; }
 .prog-hero { position: relative; min-height: 150px; display: flex; align-items: flex-end; padding: 16px; }

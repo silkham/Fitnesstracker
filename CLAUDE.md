@@ -85,6 +85,28 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   app.js maps them (discover-your-power, stronger-you). New imports use id=slug;
   keep that convention so no more aliases are ever needed.
 
+## Add-a-program preview + filters (SHIPPED v4.10)
+- Phase 9 schema (applied 2026-07-02): `program_index` gained nullable
+  `description, class_count, weeks, discipline, instructor, level, language,
+  enriched_at`. Non-destructive ADD COLUMNs (`supabase-phase9-*.sql`).
+- New branch `{enrichIndex:true, commit?, limit?(≤60,def20), slugs?, reenrich?}`
+  backfills those columns per row: description=og:description, class_count=classId
+  slots, weeks=max Week heading (else count/5). discipline/instructor/level/language
+  are parsed from the CURATED TITLE (titleDiscipline/titleInstructors/titleLevel/
+  titleLanguage helpers); title-ambiguous discipline ("other") falls back to ONE
+  ride-details call → normDiscipline. Batched (drive till remainingAfter=0); needs
+  Peloton auth so it runs AFTER login. All 174 backfilled, 0 errors. `importProgram`
+  commit also PATCHes the row so single adds stay enriched.
+- normDiscipline/titleDiscipline set: ride|strength|boxing|row|yoga|stretch|run|
+  walk|meditation|other. ~62 programs have null instructor (brand-named, not
+  "with X") — expected; they just don't appear under any instructor filter.
+- App (Add screen): rows now TAP → `openProgramPreview` sheet (reuses openSheet;
+  shows description/class_count/weeks/level + Add or View+Remove) instead of
+  instant-add. Filters: discipline chips (`setProgramAddDiscipline`) + instructor
+  `<select>` (`setProgramAddInstructor`), both from the enriched index, ANDed with
+  the text search (which also matches instructor). Remove is now reachable from the
+  preview sheet too (`removeUserProgram(pid, true)` stays on the Add screen).
+
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
   Every class links to `members.onepeloton.com/...&classId=<32-hex>` where
