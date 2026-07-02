@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.12';
+const APP_VERSION = 'Stride · v4.12.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -5018,7 +5018,7 @@ const MEAL_SLOT_DUE_H = { breakfast: 10.5, lunch: 14.5, dinner: 21, snack: 24 };
 const MEAL_CATCHUP_DAYS = 3;    // today + 2 prior — the nudge window
 const MEAL_METRICS_DAYS = 30;   // history loaded for metrics
 const MEAL_SLOT_ICON = { breakfast: '☕', lunch: '🥗', dinner: '🍽', snack: '🍎' };
-const MEAL_VISION_PROMPT = `You are a nutrition estimator for a fitness app. From the food photo and/or the user's note, identify the meal and estimate nutrition for the portion actually shown or described. Return ONLY minified JSON, no prose or code fences: {"name":"short meal name","kcal":<int>,"protein_g":<int>,"carbs_g":<int>,"fat_g":<int>}. Estimate realistically; if unsure, still give your single best guess.`;
+const MEAL_VISION_PROMPT = `You are a nutrition estimator for a fitness app. From the food photo and/or the user's note, identify everything described and estimate its nutrition for the portions shown or described. COMBINE all items into ONE meal total — sum them. Return ONLY a SINGLE flat minified JSON object, no prose, no code fences, no nested objects, no per-item list: {"name":"short meal name","kcal":<int>,"protein_g":<int>,"carbs_g":<int>,"fat_g":<int>}. Estimate realistically; if unsure, still give your single best guess.`;
 
 let _mealLog = null; // { date, slot, photoDataUrl, photoUrl, existing }
 
@@ -5260,14 +5260,17 @@ async function analyzeMeal() {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 400, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 700, messages: [{ role: 'user', content }] }),
     });
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
     const text = (data.content && data.content[0] && data.content[0].text) || '';
-    const match = text.match(/\{[\s\S]*?\}/);
+    // Greedy outermost braces (tolerates code fences / nested objects the model may add).
+    const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('no json');
-    const p = JSON.parse(match[0]);
+    let p = JSON.parse(match[0]);
+    // If the model nested the numbers under a "total"/"totals" key, unwrap it.
+    if (p && p.kcal == null) p = p.total || p.totals || p;
     const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
     set('mlName', p.name); set('mlKcal', p.kcal); set('mlProtein', p.protein_g); set('mlCarbs', p.carbs_g); set('mlFat', p.fat_g);
     toast('Estimated — check the numbers');
