@@ -474,8 +474,17 @@ function handleRealtime(table, payload) {
     } else if (payload.eventType === 'DELETE') {
       State.workouts = State.workouts.filter(w => w.id !== payload.old.id);
     }
-    renderAll();
+    scheduleRealtimeRender();
   }
+}
+
+// A Peloton sync upserts many workout rows at once, so realtime delivers a
+// burst of events — rendering on each one caused visible flashing. Coalesce a
+// burst into a single re-render.
+let _realtimeRenderTimer = null;
+function scheduleRealtimeRender() {
+  clearTimeout(_realtimeRenderTimer);
+  _realtimeRenderTimer = setTimeout(() => { _realtimeRenderTimer = null; renderAll(); }, 200);
 }
 
 // ============================================================
@@ -934,8 +943,8 @@ function renderPlan() {
 function switchPlanTab(name) {
   State.planTab = name;
   renderPlan();
-  // lazy-load the live schedule the first time the Instructor tab is opened
-  if (name === 'instructor' && State.instructorSchedule == null) fetchInstructorSchedule();
+  // load the live schedule when the Instructor tab opens (cache-first)
+  if (name === 'instructor') ensureInstructorSchedule();
 }
 
 // ---- Programs tab: filterable list of hero cards ----
@@ -1443,6 +1452,38 @@ async function addProgramClassToPlan(programId, rideId) {
 }
 
 // ---- Plan → Instructor: favourite instructor's upcoming LIVE classes ----
+// The live schedule is a network pull (Peloton's schedule via the edge fn), so
+// cache it in localStorage keyed on the favourites signature + a 6h TTL. Past
+// classes are filtered at render time, so a cached pull stays useful until it
+// runs dry or ages out.
+const INSTR_SCHED_CACHE_KEY = 'stride_instr_sched_v1';
+const INSTR_SCHED_TTL = 6 * 3600 * 1000;
+function favsSig(favs) { return favs.map(foldName).sort().join('|'); }
+function saveScheduleCache(data, favs) {
+  try { localStorage.setItem(INSTR_SCHED_CACHE_KEY, JSON.stringify({ at: Date.now(), sig: favsSig(favs), data })); } catch (_e) { /* quota */ }
+}
+function loadScheduleCache(favs) {
+  try {
+    const c = JSON.parse(localStorage.getItem(INSTR_SCHED_CACHE_KEY) || 'null');
+    if (!c || !c.data || Date.now() - c.at > INSTR_SCHED_TTL) return null;
+    if (c.sig !== favsSig(favs)) return null;  // favourites changed
+    return c.data;
+  } catch (_e) { return null; }
+}
+function clearScheduleCache() { try { localStorage.removeItem(INSTR_SCHED_CACHE_KEY); } catch (_e) { /* ignore */ } }
+// Open the Instructor tab: reuse a fresh cache with future classes, else pull.
+function ensureInstructorSchedule() {
+  const st = State.instructorSchedule;
+  if (st && typeof st === 'object' && Array.isArray(st.classes)) { renderInstructor(); return; }
+  const favs = favouriteInstructors(activeMember());
+  if (!favs.length) { renderInstructor(); return; }
+  const cached = loadScheduleCache(favs);
+  if (cached && (cached.classes || []).some(c => c.start_unix > Date.now() / 1000)) {
+    State.instructorSchedule = cached; renderInstructor(); return;
+  }
+  fetchInstructorSchedule();
+}
+
 async function fetchInstructorSchedule() {
   const m = activeMember();
   const favs = favouriteInstructors(m);
@@ -1462,7 +1503,10 @@ async function fetchInstructorSchedule() {
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out.ok) { console.error('instructor schedule', res.status, out); State.instructorSchedule = 'error'; }
-    else State.instructorSchedule = { classes: out.classes || [], endpoint: out.endpoint, horizonDays: out.horizonDays };
+    else {
+      State.instructorSchedule = { classes: out.classes || [], endpoint: out.endpoint, horizonDays: out.horizonDays };
+      saveScheduleCache(State.instructorSchedule, favs);
+    }
   } catch (e) {
     console.error('fetchInstructorSchedule', e);
     State.instructorSchedule = 'error';
@@ -1534,7 +1578,10 @@ function renderInstructor() {
     return;
   }
 
-  const classes = st.classes || [];
+  // Only show classes still in the future — a cached pull keeps working as its
+  // earlier classes pass.
+  const nowUnix = Date.now() / 1000;
+  const classes = (st.classes || []).filter(c => (c.start_unix || 0) > nowUnix);
   // One section per favourite instructor (in your saved order), classes chronological.
   let html = '';
   favs.forEach(fav => {
@@ -5503,11 +5550,8 @@ function openMemberEditorWorkouts(memberId) {
     <div class="field">
       <label class="field-label">Favourite Peloton instructors</label>
       <div id="mInstructorChips" class="chip-list"></div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <input class="input" id="mInstructorInput" placeholder="Bradley Rose" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditInstructor();}">
-        <button class="btn" onclick="addEditInstructor()">Add</button>
-      </div>
-      <div class="tiny" style="color:var(--ink-4);margin-top:6px;">Their upcoming live classes show on the Plan → Instructor tab.</div>
+      <div id="mInstructorPicker" style="margin-top:8px;"></div>
+      <div class="tiny" style="color:var(--ink-4);margin-top:6px;">Pick from Peloton's instructor list. Their upcoming live classes show on the Plan → Instructor tab.</div>
     </div>
 
     <div class="btn-row" style="margin-top:18px;">
@@ -5516,6 +5560,7 @@ function openMemberEditorWorkouts(memberId) {
   `;
   openSheet('Workouts · ' + escapeHtml(m.display_name), html);
   renderInstructorChips();
+  renderInstructorPicker();
 }
 
 function renderInstructorChips() {
@@ -5526,6 +5571,42 @@ function renderInstructorChips() {
     ? list.map((n, i) => `<span class="chip removable">${escapeHtml(n)}<button type="button" aria-label="Remove" onclick="removeEditInstructor(${i})">×</button></span>`).join('')
     : `<span class="tiny" style="color:var(--ink-4);">None yet — add one below.</span>`;
 }
+// Dropdown picker built from the cached Peloton instructor directory — avoids
+// the spelling mistakes a free-text field allowed. Falls back to a text input
+// only if the directory can't be loaded.
+function renderInstructorPicker() {
+  const host = document.getElementById('mInstructorPicker');
+  if (!host) return;
+  const dir = State.instructorDir;
+  if (!dir) {
+    host.innerHTML = `<div class="tiny" style="color:var(--ink-4);">Loading instructors…</div>`;
+    loadInstructorDirectory().then(d => {
+      if (d) renderInstructorPicker();
+      else {
+        const h = document.getElementById('mInstructorPicker');
+        if (h) h.innerHTML = `<div style="display:flex;gap:8px;">
+          <input class="input" id="mInstructorInput" placeholder="Bradley Rose" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addEditInstructor();}">
+          <button class="btn" onclick="addEditInstructor()">Add</button></div>`;
+      }
+    }).catch(() => {});
+    return;
+  }
+  const chosen = new Set((State._editInstructors || []).map(foldName));
+  const names = Object.values(dir).map(x => x.name).filter(n => n && !chosen.has(foldName(n))).sort((a, b) => a.localeCompare(b));
+  if (!names.length) { host.innerHTML = `<div class="tiny" style="color:var(--ink-4);">All instructors added.</div>`; return; }
+  host.innerHTML = `<select class="input" onchange="addEditInstructorFromSelect(this.value);this.selectedIndex=0;">
+    <option value="">＋ Add an instructor…</option>
+    ${names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}
+  </select>`;
+}
+function addEditInstructorFromSelect(name) {
+  name = (name || '').trim();
+  if (!name) return;
+  State._editInstructors = State._editInstructors || [];
+  if (!State._editInstructors.some(x => foldName(x) === foldName(name))) State._editInstructors.push(name);
+  renderInstructorChips();
+  renderInstructorPicker();
+}
 function addEditInstructor() {
   const input = document.getElementById('mInstructorInput');
   if (!input) return;
@@ -5535,11 +5616,13 @@ function addEditInstructor() {
   input.value = '';
   input.focus();
   renderInstructorChips();
+  renderInstructorPicker();
 }
 function removeEditInstructor(i) {
   if (!State._editInstructors) return;
   State._editInstructors.splice(i, 1);
   renderInstructorChips();
+  renderInstructorPicker();
 }
 
 async function saveMemberWorkouts(id) {
@@ -5564,6 +5647,7 @@ async function saveMemberWorkouts(id) {
   await saveMemberPayload(id, payload);
   // schedule cache is keyed on the favourites — drop it so the tab refetches
   State.instructorSchedule = null;
+  clearScheduleCache();
   openMemberEditor(id);
 }
 
