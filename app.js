@@ -28,6 +28,10 @@ const State = {
   isOnline: navigator.onLine,
   programs: [],         // [{id, title, subtitle, classes:[{order,ride_id,title,instructor,duration_min}]}]
   programProgress: {},  // {program_id: Set<slot index>} — completed slots; repeated rides tick one slot per completion
+  userPrograms: new Set(), // program_ids the signed-in user has added (user_programs table)
+  programIndex: null,   // [{slug,title,article_url,scraped_at}] from program_index — lazy, null until Add screen opens
+  programAddQuery: '',  // Add-a-program search text
+  importingSlug: null,  // slug currently importing (locks the Add list to one import at a time)
   trainingTab: 'ride',  // Progress screen: ride | strength discipline toggle
   oneRmLift: null,      // Progress screen: exercise shown in the 1RM trend
   programFilter: 'all', // Programs tab: all | inprogress | completed
@@ -44,7 +48,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.8.1';
+const APP_VERSION = 'Stride · v4.9';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -345,7 +349,7 @@ async function loadAll() {
     await loadPelotonHealth();
 
     // load Programs manifests + completion (joined against done workouts)
-    await loadPrograms();
+    await Promise.all([loadPrograms(), loadUserPrograms()]);
     await loadProgramProgress();
 
     // load ingredients
@@ -756,6 +760,17 @@ async function loadPrograms() {
   } catch (e) { State.programs = State.programs || []; }
 }
 
+// "My programs" — the user_programs join (per-user, RLS'd). The programs table
+// itself is the shared catalog and keeps growing via in-app imports; only the
+// programs the user has ADDED show on the Programs tab or load progress.
+async function loadUserPrograms() {
+  try {
+    const { data } = await State.client.from('user_programs').select('program_id');
+    State.userPrograms = new Set((data || []).map(r => r.program_id));
+  } catch (e) { State.userPrograms = State.userPrograms || new Set(); }
+}
+function myPrograms() { return State.programs.filter(p => State.userPrograms.has(p.id)); }
+
 // One completed workout ticks ONE slot. Count completions per ride, then
 // consume them across the program's slots in order — a ride repeated in later
 // weeks (e.g. Stronger You's stretches) only ticks as many slots as it was
@@ -771,7 +786,7 @@ function programSlotTicks(classes, doneRideIds) {
 // Completed-slot sets per program, keyed by program id. Refreshed after
 // every Peloton sync (mirrors loadPelotonHealth).
 async function loadProgramProgress() {
-  for (const p of State.programs) {
+  for (const p of myPrograms()) {
     try {
       const ids = [...new Set(p.classes.map(c => c.ride_id))];
       const { data } = await State.client.from('workouts').select('peloton_ride_id').eq('status', 'done').in('peloton_ride_id', ids);
@@ -927,12 +942,13 @@ function renderPrograms() {
   const content = document.getElementById('programsContent');
   if (!content) return;
   ensureInstructorDir();  // load instructor photos for program heroes
-  const all = State.programs;
+  const all = myPrograms();
   if (!all.length) {
     if (sub) sub.textContent = 'Ordered class plans';
     content.innerHTML = `<div class="card" style="text-align:center;padding:28px 16px;color:var(--ink-3);">
       <div style="font-size:14px;margin-bottom:4px;">No programs yet</div>
-      <div class="tiny" style="color:var(--ink-4);">Curated, ordered class plans will appear here.</div>
+      <div class="tiny" style="color:var(--ink-4);margin-bottom:14px;">Add any Peloton program and your completed classes tick off automatically.</div>
+      <button class="btn primary" onclick="openProgramAdd()">Browse programs</button>
     </div>`;
     return;
   }
@@ -952,6 +968,7 @@ function renderPrograms() {
   } else {
     html += shown.map(({ p, s }) => programCardHtml(p, s)).join('');
   }
+  html += `<button class="btn ghost block" style="margin-top:4px;" onclick="openProgramAdd()">＋ Add a program</button>`;
   content.innerHTML = html;
 }
 function programCardHtml(p, s) {
@@ -988,6 +1005,150 @@ function startNextClass(programId) {
   if (!p) return;
   const c = programNextClass(p);
   if (c) openClassInfo(programId, c.ride_id); else openProgram(programId);
+}
+
+// ---- Add a program: searchable index of every PeloBuddy-listed program ----
+// program_index holds slug/title/article_url for ~174 programs; tapping Add on
+// one not yet in the shared catalog triggers the peloton-ingest importProgram
+// branch (user-JWT auth — no secret in the frontend), which parses the article
+// and fills programs/program_classes/peloton_classes + artwork. Then a
+// user_programs row makes it "mine".
+
+// Index-article slugs for the two programs onboarded manually before the
+// importer existed (their program ids predate the id=slug convention).
+const PROGRAM_SLUG_ALIASES = {
+  'peloton-discover-your-power-zones-2021': 'discover-your-power',
+  'stronger-you-program-ben': 'stronger-you',
+};
+function programIdForSlug(slug) { return PROGRAM_SLUG_ALIASES[slug] || slug; }
+
+// POST to peloton-ingest as the signed-in user. Returns parsed JSON or null.
+async function callIngest(body) {
+  const cfg = getConfig();
+  const { data: { session } } = await State.client.auth.getSession();
+  const token = session?.access_token;
+  if (!token) { toast('Sign in first'); return null; }
+  try {
+    const res = await fetch(`${cfg.url}/functions/v1/peloton-ingest`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, apikey: cfg.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { console.error('peloton-ingest', res.status, await res.text()); return null; }
+    return await res.json();
+  } catch (e) { console.error('callIngest', e); return null; }
+}
+
+function openProgramAdd() {
+  State.programAddQuery = '';
+  renderProgramAdd();
+  switchScreen('program-add');
+  ensureProgramIndex();
+}
+// Load the index once per session; re-scrape via the edge function when the
+// table is empty or over a week old (PeloBuddy adds programs occasionally).
+async function ensureProgramIndex(force = false) {
+  if (!force && Array.isArray(State.programIndex) && State.programIndex.length) { renderProgramAdd(); return; }
+  try {
+    let { data } = await State.client.from('program_index').select('slug,title,article_url,scraped_at').order('title');
+    const newest = (data || []).reduce((m, r) => Math.max(m, Date.parse(r.scraped_at) || 0), 0);
+    if (force || !data || !data.length || Date.now() - newest > 7 * 86400000) {
+      const out = await callIngest({ programIndex: true, commit: true });
+      if (out && out.ok) ({ data } = await State.client.from('program_index').select('slug,title,article_url,scraped_at').order('title'));
+    }
+    State.programIndex = data || [];
+  } catch (e) { State.programIndex = State.programIndex || []; }
+  renderProgramAdd();
+}
+function setProgramAddQuery(v) { State.programAddQuery = v; renderProgramAddList(); }
+function renderProgramAdd() {
+  const host = document.getElementById('programAddContent');
+  if (!host) return;
+  host.innerHTML = `
+    <button class="btn ghost" style="margin:8px 0 4px;" onclick="switchScreen('programs')">‹ Programs</button>
+    <div class="greeting" style="padding:0 0 8px;">
+      <h1 class="display"><em>Add a program</em></h1>
+      <div class="greeting-sub" id="paSub">—</div>
+    </div>
+    <input class="input" id="paSearch" type="search" placeholder="Search programs…" autocomplete="off"
+      value="${escapeHtml(State.programAddQuery)}" oninput="setProgramAddQuery(this.value)" style="margin-bottom:12px;">
+    <div id="paList"></div>`;
+  renderProgramAddList();
+}
+function renderProgramAddList() {
+  const el = document.getElementById('paList');
+  const sub = document.getElementById('paSub');
+  if (!el) return;
+  const idx = State.programIndex;
+  if (idx == null) {
+    if (sub) sub.textContent = 'Loading program library…';
+    el.innerHTML = `<div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>
+      <div class="card"><div class="skel skel-row"></div><div class="skel skel-meta"></div></div>`;
+    return;
+  }
+  if (sub) sub.textContent = `${idx.length} programs · via PeloBuddy`;
+  const q = foldName(State.programAddQuery);
+  const rows = q ? idx.filter(r => foldName(r.title).includes(q)) : idx;
+  if (!rows.length) {
+    el.innerHTML = `<div class="tiny" style="text-align:center;padding:28px;color:var(--ink-4);">No programs match.</div>`;
+    return;
+  }
+  el.innerHTML = rows.map(r => {
+    const pid = programIdForSlug(r.slug);
+    const added = State.userPrograms.has(pid);
+    const importing = State.importingSlug === r.slug;
+    const btn = added
+      ? `<button class="pd-class-btn" onclick="event.stopPropagation();openProgram('${pid}')">View</button>`
+      : (importing
+        ? `<button class="pd-class-btn" disabled>Importing…</button>`
+        : `<button class="pd-class-btn" onclick="event.stopPropagation();addProgramFromIndex('${r.slug}')">Add</button>`);
+    return `<div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:10px;${importing ? 'opacity:0.7;' : ''}"
+      onclick="${added ? `openProgram('${pid}')` : `addProgramFromIndex('${r.slug}')`}">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:600;">${escapeHtml(r.title)}</div>
+        ${added ? `<div class="tiny" style="color:var(--ink-4);">In your programs</div>` : ''}
+      </div>
+      ${btn}
+    </div>`;
+  }).join('');
+}
+// Add = (import into the shared catalog if it isn't there yet) + user_programs
+// row. Import runs the full article→ride-details pipeline: ~10-60s.
+async function addProgramFromIndex(slug) {
+  if (State.importingSlug) return; // one import at a time
+  const entry = (State.programIndex || []).find(r => r.slug === slug);
+  if (!entry) return;
+  const pid = programIdForSlug(slug);
+  if (State.userPrograms.has(pid)) { openProgram(pid); return; }
+  const inCatalog = State.programs.some(p => p.id === pid);
+  State.importingSlug = slug;
+  renderProgramAddList();
+  try {
+    if (!inCatalog) {
+      toast('Importing program — takes a moment…');
+      const out = await callIngest({ importProgram: { url: entry.article_url }, commit: true });
+      if (!out || !out.ok || !(out.programCommitted > 0)) { toast('Import failed — try again'); return; }
+      await loadPrograms();
+    }
+    const { error } = await State.client.from('user_programs').insert({ program_id: pid });
+    if (error && error.code !== '23505') { console.error('user_programs', error); toast('Could not add program'); return; }
+    State.userPrograms.add(pid);
+    await loadProgramProgress();
+    renderPrograms();
+    toast('Program added');
+    openProgram(pid);
+  } finally {
+    State.importingSlug = null;
+    renderProgramAddList();
+  }
+}
+async function removeUserProgram(programId) {
+  if (!confirm('Remove this program from your list? Your completed classes stay in your history.')) return;
+  try { await State.client.from('user_programs').delete().eq('program_id', programId); } catch (e) { /* row may already be gone */ }
+  State.userPrograms.delete(programId);
+  renderPrograms();
+  switchScreen('programs');
+  toast('Program removed');
 }
 
 // ---- Program detail: full-page Overview + per-week class lists ----
@@ -1064,7 +1225,8 @@ function programOverviewPanel(p, s) {
     <div class="pd-about">
       <div class="pd-about-instr">${escapeHtml(ins.primary)}${ins.extra ? ` <span style="color:var(--ink-4);">· +${ins.extra} more</span>` : ''}</div>
       ${p.subtitle ? `<p>${escapeHtml(p.subtitle)}</p>` : ''}
-    </div>`;
+    </div>
+    <button class="btn ghost block" style="margin-top:14px;color:var(--ink-4);" onclick="removeUserProgram('${p.id}')">Remove from my programs</button>`;
 }
 function programWeekPanel(p, w) {
   const done = State.programProgress[p.id] || new Set();
