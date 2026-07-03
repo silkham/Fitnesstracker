@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.12.5';
+const APP_VERSION = 'Stride · v4.12.6';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -5260,16 +5260,15 @@ async function analyzeMeal() {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      // claude-sonnet-4 (not 5): supports assistant prefill; no default extended-thinking block.
-      // Prefill the assistant turn with "{" so the model MUST return a JSON object (no preamble/questions).
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 700, messages: [{ role: 'user', content }, { role: 'assistant', content: '{' }] }),
+      // claude-sonnet-5 is the model this key can access. No assistant prefill (sonnet-5's
+      // default extended thinking rejects it → HTTP 400); the strong prompt forces JSON instead.
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 700, messages: [{ role: 'user', content }] }),
     });
     if (!r.ok) { const body = await r.text(); throw new Error('HTTP ' + r.status + ': ' + body.slice(0, 300)); }
     const data = await r.json();
-    // Read ALL text blocks; the prefilled "{" isn't echoed back, so re-add it, then grab the outermost object.
+    // Read ALL text blocks (skips any thinking block), then grab the outermost {...} object.
     const text = (data.content || []).filter(b => b && b.type === 'text').map(b => b.text).join('').trim();
-    const jsonStr = text.charAt(0) === '{' ? text : '{' + text;
-    const match = jsonStr.match(/\{[\s\S]*\}/);
+    const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('no json');
     let p = JSON.parse(match[0]);
     // If the model nested the numbers under a "total"/"totals" key, unwrap it.
