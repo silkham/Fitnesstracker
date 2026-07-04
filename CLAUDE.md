@@ -1,4 +1,27 @@
+---
+project: Stride
+status: active
+last_updated: 2026-07-03
+next_milestone: None recorded — set next milestone here
+repo: https://github.com/silkham/Fitnesstracker
+live_url: https://silkham.github.io/Fitnesstracker/
+---
+
 # Stride — project conventions
+
+<!-- The Status and Roadmap sections below are read by the Project Dashboard.
+     Keep them current: Status = where it is now, Roadmap = what's planned.
+     Changelog is pulled live from git commit history, so don't maintain one here. -->
+
+## Status
+Live and shipping. Single-user athletic weight-loss PWA on Supabase + Deno Edge
+Functions, deployed via GitHub Pages (`git push` deploys). Most recent shipped work:
+in-app program import (v4.9), add-a-program preview + filters (v4.10), instructor tab
+with realtime rendering (v4.11), and meal photo logging (v4.12). Program onboarding
+runs on a proven no-OCR pipeline.
+
+## Roadmap
+- [ ] None recorded yet — add planned milestones here for the dashboard to show
 
 Single-user athletic weight-loss PWA. Static frontend + Supabase (Postgres + RLS)
 + Deno Edge Functions. Deployed via GitHub Pages (silkham/Fitnesstracker →
