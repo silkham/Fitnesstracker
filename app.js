@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.12.6';
+const APP_VERSION = 'Stride · v4.12.7';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -4316,15 +4316,16 @@ ${ingredientText}`;
         'anthropic-dangerous-direct-browser-access':'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 200,
+        model: 'claude-sonnet-5',
+        max_tokens: 400,
         messages: [{ role:'user', content: prompt }],
       }),
     });
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
-    const text = data.content?.[0]?.text || '';
-    const match = text.match(/\{[\s\S]*?\}/);
+    // Read ALL text blocks (skips any thinking block), then grab the outermost {...}.
+    const text = (data.content || []).filter(b => b && b.type === 'text').map(b => b.text).join('').trim();
+    const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('No JSON in response');
     const parsed = JSON.parse(match[0]);
     if (parsed.kcal) document.getElementById('rKcal').value = parsed.kcal;

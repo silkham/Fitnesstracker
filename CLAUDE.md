@@ -161,10 +161,17 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   forward-capped at today), rendered by the rewritten `renderMeals`.
 - **AI macro estimate is a CLIENT-SIDE Claude VISION call** — reuses the same
   pattern as recipe `estimateMacros`: `State.settings.claude_api_key` +
-  `anthropic-dangerous-direct-browser-access` header, model **`claude-sonnet-5`**
-  (recipe `estimateMacros` still points at `claude-sonnet-4` — intentionally not
-  bumped). `analyzeMeal` sends `{type:'image',source:{base64}}` + prompt, parses
-  the JSON. No Edge Function. Works without a key (manual entry); estimate needs it.
+  `anthropic-dangerous-direct-browser-access` header, model **`claude-sonnet-5`**.
+  `analyzeMeal` sends `{type:'image',source:{base64}}` + prompt, parses the JSON.
+  No Edge Function. Works without a key (manual entry); estimate needs it.
+- **MODEL LANDMINE (v4.12.6):** this API key can access `claude-sonnet-5` but
+  NOT `claude-sonnet-4-20250514` (returns HTTP 404 `not_found_error`) — both
+  `analyzeMeal` AND recipe `estimateMacros` now use `claude-sonnet-5`. Do NOT use
+  a `claude-sonnet-4*` id. Also do NOT prefill the assistant turn with sonnet-5
+  (its default extended thinking rejects prefill → HTTP 400) — instead read ALL
+  text blocks (`filter(b=>b.type==='text')`, skips the thinking block) and greedy-
+  match the outermost `{...}`. The strong "output ONLY JSON, never ask questions"
+  prompt is what forces valid JSON without a prefill.
 - **Phase 10 schema** (`supabase-phase10-meal-log.sql`, applied 2026-07-02):
   `meal_logs` (household+member keyed, RLS on the household_memberships pattern,
   `unique(member_id,log_date,slot)`, `state` in logged|skipped), 4 nullable
