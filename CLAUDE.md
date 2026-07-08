@@ -60,6 +60,14 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
 - Supabase anon key is public by design; data protected by Row Level Security.
 - Auth uses the user's own Supabase JWT. No secrets in the frontend.
 - Edge Function secrets live in Supabase env vars, never in git.
+- **Catalog tables are RLS-locked (fix applied 2026-07-07):** `peloton_classes`,
+  `program_classes`, `program_index`, `programs` now have RLS ON with a read-only
+  SELECT policy for anon/authenticated; anon INSERT/UPDATE/DELETE/TRUNCATE grants
+  were REVOKED. The frontend (anon key) only READS these — verified; all catalog
+  WRITES go through `peloton-ingest`, which uses `SUPABASE_SERVICE_ROLE_KEY`
+  (bypasses RLS). **Tell:** if class lists stop loading or sync starts failing,
+  something is trying to WRITE via the anon key — fix the writer to use
+  service_role, don't loosen the RLS.
 
 ## Workflow
 - `main` stays deployable. Branch for exploratory/risky work.
