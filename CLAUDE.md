@@ -1,7 +1,7 @@
 ---
 project: Stride
 status: active
-last_updated: 2026-07-03
+last_updated: 2026-07-14
 next_milestone: None recorded — set next milestone here
 repo: https://github.com/silkham/Fitnesstracker
 live_url: https://silkham.github.io/Fitnesstracker/
@@ -17,8 +17,8 @@ live_url: https://silkham.github.io/Fitnesstracker/
 Live and shipping. Single-user athletic weight-loss PWA on Supabase + Deno Edge
 Functions, deployed via GitHub Pages (`git push` deploys). Most recent shipped work:
 in-app program import (v4.9), add-a-program preview + filters (v4.10), instructor tab
-with realtime rendering (v4.11), and meal photo logging (v4.12). Program onboarding
-runs on a proven no-OCR pipeline.
+with realtime rendering (v4.11), meal photo logging (v4.12), and the LifeOS hub
+adapter (v4.13). Program onboarding runs on a proven no-OCR pipeline.
 
 ## Roadmap
 - [ ] None recorded yet — add planned milestones here for the dashboard to show
@@ -196,6 +196,32 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   = Today's calories/protein summary. Photo upload is best-effort (feature works if
   the bucket is missing — row just saves photo-less). Realtime `meal_logs` events
   use `scheduleRealtimeRender()` (same debounce landmine as workouts).
+
+## LifeOS hub adapter (SHIPPED v4.13.0)
+- **`lifeos.js`** (repo root) publishes Stride's signals into the shared
+  `lifeos.signals` contract — the cross-app hub reads them read-only. It is a
+  **classic global `<script>` loaded AFTER `app.js`** in `index.html` (shares
+  app.js's global scope: reads `State`, `activeMember`, `dayTotals`, `missedSlots`,
+  `todayISO`, `isoDateAddDays`). Adds NO DOM/onclick — clear of the onclick landmine.
+- Entry point `publishToLifeOS()` is called **fire-and-forget at the end of
+  `loadAll()`** (wrapped in try/catch — never blocks or breaks boot). Best-effort:
+  no-ops if the `lifeos` schema isn't reachable.
+- Write path is the SAME client/JWT/household — no second Supabase client:
+  `State.client.schema('lifeos').from('signals').upsert(rows, {onConflict:
+  'household_id,app,key'})`. `lifeos` schema lives in the SAME project
+  (`dgbbyijhabjozqrkokrq`) and is already PostgREST-exposed.
+- **Emits 4 signals** (app=`strive`), stable keys, re-published every boot:
+  `weight` (metric: latest kg + signed weekly trend), `calories-today` (metric:
+  today's kcal vs `members.kcal_target`), `log-food-today` (task, due today),
+  `workout-tomorrow` (nudge, due tomorrow). Tasks/nudges **flip `status`
+  open↔done each boot** so the hub always mirrors reality — Stride is the source
+  of truth, no manual dismiss.
+- **Trend colour is via the `state` column** (`good|warn|bad`), NOT the trend sign
+  — LifeOS colours by `state`. Losing weight / under calorie budget = `good`;
+  over budget = `bad`. When adding more metrics, always set `state` explicitly.
+- No new schema in THIS repo — `lifeos.signals` is owned/migrated by the LifeOS
+  repo. Verify logic with the jsc harness pattern (browser preview is env-blocked
+  here); a real upsert only happens when a signed-in user opens the app.
 
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
