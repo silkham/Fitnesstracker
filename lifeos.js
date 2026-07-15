@@ -21,6 +21,7 @@
 
 const LIFEOS_APP = 'strive';
 const LIFEOS_CTA = 'https://silkham.github.io/Fitnesstracker/'; // no hash routing → app home
+const LIFEOS_DOW = ['sun','mon','tue','wed','thu','fri','sat'];
 
 function lifeosWeightDate(w) {
   return new Date(w.measured_on || w.created_at || w.logged_at).getTime();
@@ -106,22 +107,31 @@ function lifeosLogFoodSignal(hid) {
   };
 }
 
-// Nudge (planning radar): is anything on the calendar for tomorrow?
-// Flips to 'done' once a class is planned.
-function lifeosWorkoutTomorrowSignal(hid, mid) {
-  const tomorrow = isoDateAddDays(todayISO(), 1);
-  const planned = State.workouts.some(w =>
-    w.member_id === mid && w.planned_for === tomorrow && w.status !== 'cancelled');
-
-  return {
-    household_id: hid, app: LIFEOS_APP, key: 'workout-tomorrow', kind: 'nudge',
-    title: planned ? 'Workout planned tomorrow' : 'No workout planned tomorrow',
-    detail: planned ? "You're set" : 'Add a class so tomorrow is locked in',
-    value: null, unit: null, trend: null,
-    state: planned ? 'good' : 'warn',
-    due: tomorrow, cta_url: LIFEOS_CTA, cta_label: 'Plan workout', sort_order: 40,
-    status: planned ? 'done' : 'open',
-  };
+// Calendar: one row per day for the rolling week (today + next 6) so the LifeOS
+// hub can show the whole week's workouts, not just tomorrow. dow-keyed and
+// self-cleaning — a planned session → status 'open' with the workout label; an
+// empty day → 'dismissed' (LifeOS then shows its own Plan / Rest-day controls and
+// OWNS the rest-day acks, so this every-boot republish can't resurrect one).
+function lifeosWeekSignals(hid, mid) {
+  const start = todayISO();
+  const rows = [];
+  for (let i = 0; i < 7; i++) {
+    const iso = isoDateAddDays(start, i);
+    const [y, mo, dd] = iso.split('-').map(Number);
+    const dow = LIFEOS_DOW[new Date(y, mo - 1, dd).getDay()];  // local-safe weekday
+    const w = State.workouts.find(x =>
+      x.member_id === mid && x.planned_for === iso && x.status !== 'cancelled');
+    const disp = w ? formatWorkoutDisplay(w) : null;
+    rows.push({
+      household_id: hid, app: LIFEOS_APP, key: 'day-' + dow, kind: 'task',
+      title: w ? disp.primary : 'Rest day',
+      detail: w ? disp.secondary : null,
+      value: null, unit: null, trend: null, state: 'good',
+      due: iso, cta_url: LIFEOS_CTA, cta_label: 'Open workout', sort_order: 40,
+      status: w ? 'open' : 'dismissed',
+    });
+  }
+  return rows;
 }
 
 // Fire-and-forget from the end of loadAll(). Best-effort: never throws,
@@ -139,7 +149,7 @@ async function publishToLifeOS() {
       lifeosWeightSignal(hid, mid),
       lifeosCaloriesSignal(hid, m),
       lifeosLogFoodSignal(hid),
-      lifeosWorkoutTomorrowSignal(hid, mid),
+      ...lifeosWeekSignals(hid, mid),
     ].filter(Boolean).map(r => ({ ...r, updated_at: now }));
     if (!rows.length) return;
 
