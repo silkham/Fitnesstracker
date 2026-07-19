@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.14.0';
+const APP_VERSION = 'Stride · v4.14.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -336,6 +336,16 @@ async function loadAll() {
     State.mealPlan = weekPlan;
     State.mealWeekStart = weekPlan.week_start;
 
+    // Resolve the active member UP-FRONT — before any per-member load below
+    // (strength sets, meal logs). This used to run at the end of loadAll, so
+    // those loads fell back to members[0]; a non-slot-0 user on a fresh device
+    // loaded the WRONG member's data, and the LifeOS calorie tile then
+    // republished that wrong/zero value over the correct one (cross-device wipe).
+    const me = resolveActiveMember();
+    State.activeMemberId = me?.id || State.members[0]?.id || null;
+    if (me?.slot) localStorage.setItem(DEVICE_MEMBER_KEY, me.slot);
+    applyMemberTheme();
+
     // load strength sets (last 120 days). Resilient: table may not exist yet.
     try {
       const since = isoDateAddDays(todayISO(), -120);
@@ -393,11 +403,7 @@ async function loadAll() {
       .gte('date', State.weekStart)
       .lte('date', weekEnd);
     State.personalSlots = personal || [];
-    // Single-user: auto-bind to the member that belongs to the signed-in account. No picker.
-    const me = resolveActiveMember();
-    State.activeMemberId = me?.id || State.members[0]?.id || null;
-    if (me?.slot) localStorage.setItem(DEVICE_MEMBER_KEY, me.slot);
-    applyMemberTheme();
+    // (active member is resolved up-front, right after members load — see above)
 
     // realtime
     setupRealtime();
