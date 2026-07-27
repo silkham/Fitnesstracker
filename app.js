@@ -53,7 +53,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.15.2';
+const APP_VERSION = 'Stride · v4.15.3';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -6039,8 +6039,33 @@ function renderProfile() {
       <div class="mc-row"><span class="k">Weight goal</span><span class="v">${m.weight_goal_kg ? m.weight_goal_kg + ' kg' : '—'}</span></div>
       <div class="mc-row"><span class="k">Weekly sessions</span><span class="v">${m.weekly_session_target}${m.rest_days_per_week ? ` · ${m.rest_days_per_week} rest` : ''}</span></div>
       ${programLabel ? `<div class="mc-row"><span class="k">Program</span><span class="v">${programLabel}</span></div>` : ''}
+      ${m.med_name ? `<div class="mc-row"><span class="k">Medication</span><span class="v">${escapeHtml(m.med_name)}${m.med_current_dose_mg != null ? ' · ' + fmtDoseMg(m.med_current_dose_mg) : ''}</span></div>` : ''}
     </div>`;
   });
+
+  // Static medication reference — no logic, no personalisation, no interpretation.
+  // Only appears once a medication is set. Verbatim clinical facts, nothing derived.
+  if (activeMember() && activeMember().med_name) {
+    html += `<details class="card" style="margin-top:14px;">
+      <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;">
+        <span class="eyebrow">Medication reference</span>
+        <span style="color:var(--ink-4);font-size:14px;">›</span>
+      </summary>
+      <div class="med-ref">
+        <div class="med-ref-h">Dose ladder</div>
+        <p>1.5 mg → 4 mg → 9 mg → 25 mg, once daily, minimum one month at each level.</p>
+        <div class="med-ref-h">Administration</div>
+        <p>Taken whole, on an empty stomach after fasting ≥8 hours, with a small sip of plain water only. Then no food, no drink other than water, and no other oral medication for at least 30 minutes — absorption depends on it.</p>
+        <div class="med-ref-h">Missed dose</div>
+        <p>Do not double up the next day.</p>
+        <div class="med-ref-h">Protein</div>
+        <p>Protein target on a GLP-1: 1.2–1.6 g/kg/day, spread across meals.</p>
+        <div class="med-ref-h red">Red flag</div>
+        <p class="red">Severe, persistent abdominal pain that may radiate to the back, possibly with nausea and vomiting → seek urgent medical attention (possible pancreatitis).</p>
+        <p class="med-ref-foot">Reference only. Stride records what you did — it does not give medical advice or make dosing decisions. Those are for you and your prescriber.</p>
+      </div>
+    </details>`;
+  }
 
   // ============== ACCOUNT — sign-in info ==============
   const me = activeMember();
@@ -6228,6 +6253,15 @@ function openMemberEditor(memberId) {
         </div>
       </button>
 
+      <button class="card tappable" onclick="openMemberEditorMedication('${memberId}')" style="text-align:left;background:var(--card);border:1px solid var(--line);">
+        <div class="card-eyebrow"><span class="eyebrow">Medication</span></div>
+        <div style="margin-top:6px;">
+          ${summary('Medication', m.med_name ? escapeHtml(m.med_name) : 'Not set')}
+          ${summary('Current dose', m.med_current_dose_mg != null ? fmtDoseMg(m.med_current_dose_mg) : '—')}
+          ${summary('Intake floors', (m.kcal_floor || m.protein_floor_g) ? `${m.kcal_floor || '—'} kcal · ${m.protein_floor_g || '—'} g` : 'Not set')}
+        </div>
+      </button>
+
       <button class="card tappable" onclick="openMemberEditorWorkouts('${memberId}')" style="text-align:left;background:var(--card);border:1px solid var(--line);">
         <div class="card-eyebrow"><span class="eyebrow">Workouts</span></div>
         <div style="margin-top:6px;">
@@ -6321,6 +6355,57 @@ async function saveMemberNutrition(id) {
     protein_target_g: intOrNull('mProtT'),
     carb_target_g: intOrNull('mCarbT'),
     fat_target_g: intOrNull('mFatT'),
+  };
+  await saveMemberPayload(id, payload);
+  openMemberEditor(id);
+}
+
+// --- SUB-SHEET: MEDICATION ---
+// Records what's prescribed so the app can show the dose back and time the
+// 30-minute window. Every value here is typed in by the user — nothing is
+// derived, suggested or advanced automatically.
+function openMemberEditorMedication(memberId) {
+  const m = State.members.find(x => x.id === memberId);
+  if (!m) return;
+  const html = `
+    <button class="btn ghost" style="margin-bottom:14px;padding:6px 10px;font-size:13px;" onclick="openMemberEditor('${memberId}')">← Back</button>
+    <div class="tiny" style="color:var(--ink-3);margin-bottom:14px;line-height:1.5;">Leave the name blank to hide medication from the app entirely. Stride records doses and symptoms — it never decides one.</div>
+    <div class="field">
+      <label class="field-label">Medication</label>
+      <input class="input" id="mMedName" placeholder="e.g. Wegovy (oral semaglutide)" value="${escapeHtml(m.med_name || '')}">
+    </div>
+    <div class="field input-row">
+      <div><label class="field-label">Started on</label><input class="input" id="mMedStart" type="date" value="${m.med_started_on || ''}"></div>
+      <div><label class="field-label">Current dose (mg)</label><input class="input" id="mMedDose" type="number" inputmode="decimal" step="0.5" placeholder="e.g. 1.5" value="${m.med_current_dose_mg != null ? m.med_current_dose_mg : ''}"></div>
+    </div>
+    <div class="field">
+      <label class="field-label">This dose started on</label>
+      <input class="input" id="mMedDoseStart" type="date" value="${m.med_dose_started_on || ''}">
+      <div class="tiny" style="color:var(--ink-4);margin-top:6px;">Drives the "day N of ${MED_TITRATION_DAYS}" count, and pauses the weight projection while the dose is changing.</div>
+    </div>
+
+    <div class="section-head" style="margin-top:20px;"><span class="t">Intake floors</span></div>
+    <div class="tiny" style="color:var(--ink-3);margin-bottom:12px;line-height:1.5;">The bottom of your intake band. Below these the app flags a shortfall instead of styling it as success. Protein on a GLP-1 is typically 1.2–1.6 g per kg of bodyweight per day, spread across meals.</div>
+    <div class="field input-row">
+      <div><label class="field-label">Calorie floor</label><input class="input" id="mKcalFloor" type="number" inputmode="numeric" placeholder="e.g. 1500" value="${m.kcal_floor || ''}"></div>
+      <div><label class="field-label">Protein floor (g)</label><input class="input" id="mProtFloor" type="number" inputmode="numeric" placeholder="e.g. 120" value="${m.protein_floor_g || ''}"></div>
+    </div>
+    <div class="btn-row" style="margin-top:18px;"><button class="btn primary block" onclick="saveMemberMedication('${memberId}')">Save</button></div>
+  `;
+  openSheet('Medication · ' + escapeHtml(m.display_name), html);
+}
+
+async function saveMemberMedication(id) {
+  const str = (el) => (document.getElementById(el).value || '').trim();
+  const intOrNull = (el) => { const v = parseInt(document.getElementById(el).value, 10); return isNaN(v) ? null : v; };
+  const numOrNull = (el) => { const v = parseFloat(document.getElementById(el).value); return isNaN(v) ? null : v; };
+  const payload = {
+    med_name: str('mMedName') || null,
+    med_started_on: document.getElementById('mMedStart').value || null,
+    med_current_dose_mg: numOrNull('mMedDose'),
+    med_dose_started_on: document.getElementById('mMedDoseStart').value || null,
+    kcal_floor: intOrNull('mKcalFloor'),
+    protein_floor_g: intOrNull('mProtFloor'),
   };
   await saveMemberPayload(id, payload);
   openMemberEditor(id);

@@ -1534,3 +1534,14 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .lm-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .lm-legend i { width: 14px; height: 2.5px; border-radius: 2px; display: inline-block; }
 .lm-legend i.dash { background-image: none; opacity: 0.75; }
+
+/* ---- Static medication reference (You screen) ---- */
+.med-ref { margin-top: 12px; }
+.med-ref-h {
+  font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-4); font-weight: 700; margin-top: 12px;
+}
+.med-ref-h:first-child { margin-top: 0; }
+.med-ref-h.red, .med-ref p.red { color: #ff8f6b; }
+.med-ref p { font-size: 12.5px; line-height: 1.55; color: var(--ink-3); margin-top: 4px; }
+.med-ref p.med-ref-foot { margin-top: 14px; font-size: 11px; color: var(--ink-4); }
