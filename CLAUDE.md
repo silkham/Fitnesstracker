@@ -75,6 +75,12 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
 - Commit message style: `<version>: <summary>` e.g. `4.3: Programs → data-driven`.
 - Bump `APP_VERSION` each user-facing deploy — it shows on the You page. It now
   lives in `app.js` (near the top, after the `State` object), NOT in index.html.
+- **CACHE-BUST LANDMINE — bump the `?v=` on EVERY asset tag in `index.html` in the
+  SAME commit as `APP_VERSION`.** `index.html` loads `styles.css?v=<ver>`,
+  `app.js?v=<ver>`, `lifeos.js?v=<ver>`. GitHub Pages serves these `max-age=600`,
+  so an unchanged `?v` means devices keep the stale copy and your deploy silently
+  doesn't land. (v4.14.0/v4.14.1 shipped with a stale `?v` this way.) The version
+  string in the commit SUBJECT is unreliable — trust `APP_VERSION` and the `?v`s.
 
 ## Testing (no Node/npm/deno on this machine)
 - Pure logic should have tests. Run them with JavaScriptCore:
