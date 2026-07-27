@@ -18,7 +18,8 @@ Live and shipping. Single-user athletic weight-loss PWA on Supabase + Deno Edge
 Functions, deployed via GitHub Pages (`git push` deploys). Most recent shipped work:
 in-app program import (v4.9), add-a-program preview + filters (v4.10), instructor tab
 with realtime rendering (v4.11), meal photo logging (v4.12), and the LifeOS hub
-adapter (v4.13). Program onboarding runs on a proven no-OCR pipeline.
+adapter (v4.13), and GLP-1 medication support (v4.15). Program onboarding runs
+on a proven no-OCR pipeline.
 
 ## Roadmap
 - [ ] None recorded yet — add planned milestones here for the dashboard to show
@@ -228,6 +229,48 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
 - No new schema in THIS repo — `lifeos.signals` is owned/migrated by the LifeOS
   repo. Verify logic with the jsc harness pattern (browser preview is env-blocked
   here); a real upsert only happens when a signed-in user opens the app.
+
+## GLP-1 medication support (SHIPPED v4.15)
+- **The app RECORDS, it never prescribes.** No suggested dose, no auto-advance up
+  the ladder, no interpretation of symptoms, no medical advice. Titration shows
+  "Day N of 28" and, after a FULL 28 days, only "Eligible to discuss the next
+  dose with your prescriber." Keep any new copy on that side of the line.
+- **`members.med_name` is the master switch.** Every medication surface (Today
+  card, You reference block, member-card row, LifeOS `med` signal) returns
+  ''/null when it's unset, so a non-medicated member sees the pre-4.15 app. The
+  member-editor Medication tile is the deliberate exception — it's how you set it.
+- **Intake is a BAND, not "lower is better"** (`calorieBand`/`proteinBand`, pure).
+  Below `members.kcal_floor` = `warn`, in band = `good`, over target = `bad`.
+  `floor == null` reproduces the old one-sided rule exactly, and the `banded`
+  flag gates the new copy — never remove that gate or every existing member's
+  cards change. `dayComplete()` still gates averages; don't loosen it.
+- **The 30-minute window is driven by `med_log.taken_at` (absolute timestamp)**,
+  so it survives midnight. ONE `setInterval` (`medSyncCountdown`/`stopMedCountdown`)
+  rewrites only the `#medCountdown` text; the single `renderToday()` fires when the
+  window closes. Never call `renderAll()` on a tick.
+- **Projection is suppressed across a dose change:** `computeProjection(weights,
+  goal, med_dose_started_on)` sets `titrating` when the dose changed inside its
+  56-day window, and `renderProgress` then shows no goal date. Don't "fix" this
+  by showing the date again — a linear fit across a titration step is wrong.
+- Phase 11 schema (`supabase-phase11-medication.sql`): `med_log` (household+member
+  keyed, RLS on the `household_memberships` pattern, `unique(member_id,log_date)`,
+  `dose_state` in taken|skipped|missed), 6 nullable `members` cols (`med_name`,
+  `med_started_on`, `med_current_dose_mg`, `med_dose_started_on`, `kcal_floor`,
+  `protein_floor_g`), and `weight_entries.waist_cm`.
+- `saveWeight` retries the upsert without `waist_cm` if the column is missing —
+  an optional field must never block a weigh-in.
+- LifeOS gains `med` (task, sort_order 5, flips open/done each boot) and
+  `protein-today` (metric, sort_order 25). `state` is always set explicitly.
+
+## Tests (run both before any commit that touches app.js)
+- `jsc tests/logic.test.js` — pure logic. The harness lifts named functions out
+  of the SHIPPED `app.js` text by brace matching (app.js can't be loaded whole
+  outside a browser — it calls `boot()`), so tests never drift from a copy. Add a
+  function name to `FNS` to cover it.
+- `jsc tests/handlers.check.js` — **the onclick-landmine guard.** Resolves every
+  inline `on*=` call in `app.js`/`index.html` against the top-level globals in
+  `app.js`/`lifeos.js`. Baseline at v4.15.3: 230 attributes, 117 distinct
+  handlers. Run it after ANY edit that moves or renames a function.
 
 ## Program onboarding (proven pipeline — no OCR, no Peloton program API)
 - Source: PeloBuddy article for the program (index: pelobuddy.com/programs/).
