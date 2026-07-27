@@ -126,20 +126,40 @@ function lifeosMedSignal(hid, m) {
   const st = row && row.dose_state;
   const dose = (typeof fmtDoseMg === 'function' && m.med_current_dose_mg != null)
     ? fmtDoseMg(m.med_current_dose_mg) : '';
-  let detail;
-  if (st === 'taken') detail = 'Taken' + (row.taken_at && typeof medTimeLabel === 'function' ? ' ' + medTimeLabel(row.taken_at) : '');
-  else if (st === 'skipped') detail = 'Skipped today';
-  else if (st === 'missed') detail = 'Missed — do not double up';
-  else detail = 'Fasted, small sip of plain water only';
+
+  // While the fasted window is live the row stays OPEN — the hub only renders
+  // open tasks, so flipping straight to 'done' on the dose hid the one state
+  // that carries an instruction. It closes itself when the window elapses.
+  const remaining = (st === 'taken' && typeof medWindowRemainingMs === 'function')
+    ? medWindowRemainingMs(row.taken_at, Date.now()) : 0;
+  const windowOpen = remaining > 0;
+  const endsAt = (windowOpen && typeof medWindowEndsAt === 'function' && typeof medTimeLabel === 'function')
+    ? medTimeLabel(medWindowEndsAt(row.taken_at)) : '';
+
+  let title, detail;
+  if (windowOpen) {
+    title = `${m.med_name} taken — water only`;
+    detail = endsAt ? `Nothing to eat or drink until ${endsAt}` : 'Nothing to eat or drink for 30 minutes';
+  } else if (st === 'taken') {
+    title = `${m.med_name} logged`;
+    detail = 'Taken' + (row.taken_at && typeof medTimeLabel === 'function' ? ' ' + medTimeLabel(row.taken_at) : '');
+  } else if (st === 'skipped') {
+    title = `${m.med_name} logged`; detail = 'Skipped today';
+  } else if (st === 'missed') {
+    title = `${m.med_name} logged`; detail = 'Missed — do not double up';
+  } else {
+    title = `Take ${m.med_name}${dose ? ' · ' + dose : ''}`;
+    detail = 'Fasted, small sip of plain water only';
+  }
 
   return {
     household_id: hid, app: LIFEOS_APP, key: 'med', kind: 'task',
-    title: st ? `${m.med_name} logged` : `Take ${m.med_name}${dose ? ' · ' + dose : ''}`,
-    detail,
+    title, detail,
     value: null, unit: null, trend: null,
-    state: st === 'taken' ? 'good' : 'warn',
-    due: todayISO(), cta_url: LIFEOS_CTA, cta_label: 'Log dose', sort_order: 5,
-    status: st ? 'done' : 'open',
+    state: (st === 'taken' && !windowOpen) ? 'good' : 'warn',
+    due: todayISO(), cta_url: LIFEOS_CTA,
+    cta_label: windowOpen ? 'Open Stride' : 'Log dose', sort_order: 5,
+    status: (st && !windowOpen) ? 'done' : 'open',
   };
 }
 

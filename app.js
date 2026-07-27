@@ -53,7 +53,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.15.3';
+const APP_VERSION = 'Stride · v4.15.4';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -5684,6 +5684,15 @@ function medWindowLabel(ms) {
   const mins = Math.ceil(ms / 60000);
   return mins <= 1 ? 'under a minute' : mins + ' more minutes';
 }
+// Absolute end of the window, for surfaces that show a TIME rather than a live
+// countdown (the LifeOS hub re-renders on a 60s poll — a countdown there would
+// lie between polls, an absolute time can't).
+function medWindowEndsAt(takenAt) {
+  if (!takenAt) return null;
+  const t = new Date(takenAt).getTime();
+  if (isNaN(t)) return null;
+  return new Date(t + MED_WINDOW_MIN * 60000).toISOString();
+}
 // 1-based day at the current dose level. Rounds the day difference so a DST
 // shift can't knock the count back by one. null if unknown or start is future.
 function medDoseDay(startISO, todayIso) {
@@ -5900,6 +5909,11 @@ async function saveMedDose(state) {
   setSync('synced', 'Saved');
   toast(state === 'taken' ? 'Dose logged' : (state === 'skipped' ? 'Marked skipped' : 'Marked missed'));
   renderAll();
+  // Republish immediately (Lexie's cloudSave pattern) — publishing only on boot
+  // meant the hub still said "Take Wegovy" until Stride was reloaded, and the
+  // window-open state never surfaced at all. Safe: State is fully loaded here,
+  // so this can't publish a partial snapshot over another device's good rows.
+  try { if (typeof publishToLifeOS === 'function') publishToLifeOS(); } catch (e) { /* never block a save */ }
 }
 
 function openMealUrl(enc) {

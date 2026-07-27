@@ -259,8 +259,25 @@ https://silkham.github.io/Fitnesstracker/). NO build step — `git push` deploys
   `protein_floor_g`), and `weight_entries.waist_cm`.
 - `saveWeight` retries the upsert without `waist_cm` if the column is missing —
   an optional field must never block a weigh-in.
-- LifeOS gains `med` (task, sort_order 5, flips open/done each boot) and
-  `protein-today` (metric, sort_order 25). `state` is always set explicitly.
+- LifeOS gains `med` (task, sort_order 5) and `protein-today` (metric,
+  sort_order 25). `state` is always set explicitly.
+- **The `med` row stays `status:'open'` while the fasted window is live** — the
+  hub only renders open tasks, so flipping straight to `done` on the dose hid
+  the one state that carries an instruction. It closes itself when the window
+  elapses. The hub gets an absolute time ("until 07:42"), never a countdown:
+  LifeOS re-renders on a 60s poll, so a countdown would lie between polls.
+- **`saveMedDose` republishes to LifeOS immediately** (Lexie's `cloudSave`
+  pattern). Publishing only from `loadAll` meant the hub still said "Take
+  Wegovy" until Stride was reloaded. Safe from the republish-overwrite landmine
+  because `State` is fully loaded at that point. **`saveMealLog` does NOT do
+  this yet** — `calories-today`/`log-food-today` still wait for a reload.
+- **`lifeos-med-refresh` Edge Function + hourly pg_cron** (`supabase-phase12-
+  lifeos-med-cron.sql`) is the first SERVER-side publisher. It exists because a
+  daily medication's day rolls over while the app is closed, so publish-on-open
+  left the hub silent every morning. It reads `members`+`med_log` with
+  service_role, so it always holds authoritative state. **Deploy it with
+  `--no-verify-jwt`** (the gateway rejects the INGEST_SECRET bearer otherwise)
+  and note that `service_role` needed a `grant usage on schema lifeos`.
 
 ## Tests (run both before any commit that touches app.js)
 - `jsc tests/logic.test.js` — pure logic. The harness lifts named functions out
