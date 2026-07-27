@@ -57,17 +57,24 @@ function lifeosWeightSignal(hid, mid) {
   };
 }
 
-// Metric: today's logged calories vs the active member's target.
-// Under budget = good, near = warn, over = bad. No target → neutral.
+// Metric: today's logged calories vs the active member's BAND.
+// With a kcal_floor set: below floor = warn (under-eating costs lean mass on a
+// GLP-1), inside the band = good, over target = bad. With no floor it falls back
+// to the pre-4.15 one-sided rule, unchanged. calorieBand lives in app.js.
 function lifeosCaloriesSignal(hid, m) {
   const kcal = Math.round(lifeosDayTotals(todayISO()).kcal);
   const target = m && m.kcal_target ? +m.kcal_target : null;
+  const floor = m && m.kcal_floor ? +m.kcal_floor : null;
 
   let state = null, detail;
   if (target) {
-    const ratio = kcal / target;
-    state = ratio > 1.0 ? 'bad' : (ratio > 0.9 ? 'warn' : 'good');
+    const band = typeof calorieBand === 'function'
+      ? calorieBand(kcal, target, floor)
+      : { state: kcal / target > 1.0 ? 'bad' : (kcal / target > 0.9 ? 'warn' : 'good'), zone: 'in', delta: 0, banded: false };
+    state = band.state;
     detail = `${kcal.toLocaleString()} / ${target.toLocaleString()} kcal`;
+    if (band.banded && band.zone === 'under') detail += ` · ${band.delta} below floor`;
+    else if (band.banded && band.zone === 'over') detail += ` · ${band.delta} over`;
   } else {
     detail = `${kcal.toLocaleString()} kcal logged`;
   }
@@ -76,6 +83,30 @@ function lifeosCaloriesSignal(hid, m) {
     household_id: hid, app: LIFEOS_APP, key: 'calories-today', kind: 'metric',
     title: 'Calories today', value: kcal, unit: 'kcal', trend: null, state, detail,
     cta_url: LIFEOS_CTA, cta_label: 'Log food', sort_order: 20, status: 'open',
+  };
+}
+
+// Metric: today's logged protein vs target/floor. At or above target = good,
+// below the floor = warn. state is set explicitly — LifeOS colours by state.
+function lifeosProteinSignal(hid, m) {
+  const grams = Math.round(lifeosDayTotals(todayISO()).protein);
+  const target = m && m.protein_target_g ? +m.protein_target_g : null;
+  const floor = m && m.protein_floor_g ? +m.protein_floor_g : null;
+  const band = typeof proteinBand === 'function'
+    ? proteinBand(grams, target, floor)
+    : { state: null, zone: 'none', delta: 0, banded: false };
+
+  let detail;
+  if (target) detail = `${grams} / ${target} g`;
+  else if (floor) detail = `${grams} g · floor ${floor} g`;
+  else detail = `${grams} g logged`;
+  if (band.zone === 'under') detail += ` · ${band.delta} below floor`;
+
+  return {
+    household_id: hid, app: LIFEOS_APP, key: 'protein-today', kind: 'metric',
+    title: 'Protein today', value: grams, unit: 'g', trend: null,
+    state: band.state, detail,
+    cta_url: LIFEOS_CTA, cta_label: 'Log food', sort_order: 25, status: 'open',
   };
 }
 
@@ -148,6 +179,7 @@ async function publishToLifeOS() {
     const rows = [
       lifeosWeightSignal(hid, mid),
       lifeosCaloriesSignal(hid, m),
+      lifeosProteinSignal(hid, m),
       lifeosLogFoodSignal(hid),
       ...lifeosWeekSignals(hid, mid),
     ].filter(Boolean).map(r => ({ ...r, updated_at: now }));

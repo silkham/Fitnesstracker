@@ -52,7 +52,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.14.2';
+const APP_VERSION = 'Stride · v4.15.0';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -5365,6 +5365,73 @@ async function deleteMealLog() {
   renderMeals(); renderToday();
 }
 
+// ============================================================
+// INTAKE BANDS (v4.15) — eating too little is a failure mode too
+// ------------------------------------------------------------
+// A large deficit used to be styled as success. On a GLP-1 appetite
+// collapses, and the cost of under-eating is lean mass — so intake is
+// scored as a BAND with a floor, not a one-sided "lower is better".
+// Pure functions: no DOM, no State. Unit-tested in tests/logic.test.js.
+// ============================================================
+
+// zone: 'under' (below floor) | 'in' | 'over' (above target) | 'none' (no target)
+// delta is always a positive magnitude in kcal, meaning depends on the zone.
+// floor == null reproduces the pre-4.15 one-sided behaviour EXACTLY, so a
+// member who never sets a floor sees no change at all.
+// `banded` is the render gate: only a member who has actually set a floor gets
+// the new two-sided copy. Without one the UI is byte-identical to pre-4.15.
+function calorieBand(kcal, target, floor) {
+  const k = +kcal || 0;
+  if (!target) return { state: null, zone: 'none', delta: 0, banded: false };
+  if (floor) {
+    if (k < floor)  return { state: 'warn', zone: 'under', delta: Math.round(floor - k), banded: true };
+    if (k > target) return { state: 'bad',  zone: 'over',  delta: Math.round(k - target), banded: true };
+    return { state: 'good', zone: 'in', delta: Math.round(target - k), banded: true };
+  }
+  const ratio = k / target;
+  return {
+    state: ratio > 1.0 ? 'bad' : (ratio > 0.9 ? 'warn' : 'good'),
+    zone: ratio > 1.0 ? 'over' : 'in',
+    delta: Math.round(Math.abs(target - k)),
+    banded: false,
+  };
+}
+
+// Protein is one-sided in the other direction: at/above target is good,
+// below the floor is the thing worth flagging.
+function proteinBand(grams, target, floor) {
+  const g = +grams || 0;
+  const banded = !!floor;
+  if (target) {
+    if (g >= target) return { state: 'good', zone: 'at', delta: 0, banded };
+    if (floor && g < floor) return { state: 'warn', zone: 'under', delta: Math.round(floor - g), banded };
+    return { state: null, zone: 'below', delta: Math.round(target - g), banded };
+  }
+  if (floor) {
+    return g < floor
+      ? { state: 'warn', zone: 'under', delta: Math.round(floor - g), banded }
+      : { state: 'good', zone: 'at', delta: 0, banded };
+  }
+  return { state: null, zone: 'none', delta: 0, banded: false };
+}
+
+// Factual one-liner for a band. `settled` = the day (or average) is finished,
+// so a shortfall is real rather than just "not there yet".
+function bandNote(band, unit, settled) {
+  if (!band || !band.state) return '';
+  if (band.zone === 'under') return `${band.delta}${unit} ${settled ? 'under floor' : 'to floor'}`;
+  if (band.zone === 'over') return `${band.delta}${unit} over target`;
+  if (band.zone === 'at') return 'protein target met';
+  return 'in band';
+}
+
+function bandFlagHtml(band, unit, settled) {
+  if (!band || !band.banded) return '';   // no floor set → render exactly as before
+  const note = bandNote(band, unit, settled);
+  if (!note) return '';
+  return `<span class="intake-flag ${band.state}">${note}</span>`;
+}
+
 // ---- Today-screen surfaces ----
 function mealNudgeCard() {
   const missed = missedSlots();
@@ -5389,12 +5456,16 @@ function mealTodayCard() {
       <div class="wc-sub">Snap your meals to track calories &amp; protein</div>
     </div>`;
   }
-  const chip = (v, t, label, unit) => `<div class="mtoday-chip"><div class="mtoday-num">${Math.round(v)}${t ? `<span class="mtoday-target">/${t}</span>` : ''}<span class="mtoday-unit">${unit}</span></div><div class="mtoday-label">${label}</div></div>`;
+  // Two-sided framing: a day well under the floor is a shortfall, not a win.
+  const settled = dayComplete(date);
+  const kBand = calorieBand(totals.kcal, kcalT, m && m.kcal_floor ? +m.kcal_floor : null);
+  const pBand = proteinBand(totals.protein, proT, m && m.protein_floor_g ? +m.protein_floor_g : null);
+  const chip = (v, t, label, unit, band) => `<div class="mtoday-chip"><div class="mtoday-num">${Math.round(v)}${t ? `<span class="mtoday-target">/${t}</span>` : ''}<span class="mtoday-unit">${unit}</span></div><div class="mtoday-label">${label}</div>${bandFlagHtml(band, unit, settled)}</div>`;
   return `<div class="card tappable" style="padding:14px 16px;" onclick="switchScreen('meals')">
     <div class="card-row" style="margin-bottom:8px;"><span class="eyebrow">Today's food</span><span class="tiny" style="color:var(--ink-4);">${loggedCount}/4 logged</span></div>
     <div class="mtoday-grid">
-      ${chip(totals.kcal, kcalT, 'calories', '')}
-      ${chip(totals.protein, proT, 'protein', 'g')}
+      ${chip(totals.kcal, kcalT, 'calories', '', kBand)}
+      ${chip(totals.protein, proT, 'protein', 'g', pBand)}
     </div>
   </div>`;
 }
@@ -5436,6 +5507,10 @@ function nutritionCard(m) {
     avgP = Math.round(sums.reduce((a, s) => a + s.protein, 0) / days.length);
   }
   const kcalT = m && m.kcal_target ? +m.kcal_target : null;
+  const proT = m && m.protein_target_g ? +m.protein_target_g : null;
+  // These averages are over COMPLETE days only, so a shortfall here is settled fact.
+  const kBand = avgK != null ? calorieBand(avgK, kcalT, m && m.kcal_floor ? +m.kcal_floor : null) : null;
+  const pBand = avgP != null ? proteinBand(avgP, proT, m && m.protein_floor_g ? +m.protein_floor_g : null) : null;
   const today = todayISO();
   const inK = Math.round(dayTotals(today).kcal);
   const outK = Math.round(State.workouts
@@ -5444,8 +5519,8 @@ function nutritionCard(m) {
   return `<div class="card" style="margin-top:14px;">
     <div class="card-row" style="margin-bottom:10px;"><span class="eyebrow">Nutrition</span><span class="tiny" style="color:var(--ink-4);">${days.length ? days.length + 'd complete' : 'log full days for averages'}</span></div>
     <div class="stat-grid" style="margin:0;">
-      <div class="stat-tile"><div class="stat-num">${avgK != null ? avgK : '—'}${kcalT && avgK != null ? `<span class="frac"> /${kcalT}</span>` : ''}</div><div class="stat-label">avg daily calories</div></div>
-      <div class="stat-tile"><div class="stat-num"><span class="accent">${avgP != null ? avgP : '—'}</span><span class="frac">g</span></div><div class="stat-label">avg daily protein</div></div>
+      <div class="stat-tile"><div class="stat-num">${avgK != null ? avgK : '—'}${kcalT && avgK != null ? `<span class="frac"> /${kcalT}</span>` : ''}</div><div class="stat-label">avg daily calories</div>${bandFlagHtml(kBand, '', true)}</div>
+      <div class="stat-tile"><div class="stat-num"><span class="accent">${avgP != null ? avgP : '—'}</span><span class="frac">g</span></div><div class="stat-label">avg daily protein</div>${bandFlagHtml(pBand, 'g', true)}</div>
     </div>
     <div class="ml-inout"><span>Today in <b>${inK}</b></span><span>burned <b>${outK}</b></span><span>net <b>${inK - outK}</b></span></div>
   </div>`;
