@@ -1493,3 +1493,33 @@ details.card > summary > span:last-child { transition: transform var(--dur-fast)
 .intake-flag.good { color: var(--accent); background: rgba(43,240,156,0.12); }
 .intake-flag.warn { color: #ffb84d; background: rgba(255,184,77,0.14); }
 .intake-flag.bad  { color: #ff8f6b; background: rgba(255,143,107,0.14); }
+
+/* ---- Medication card (v4.15) ---- */
+.med-card { padding: 14px 16px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
+.med-card.window { border-left-color: #ffb84d; background: linear-gradient(180deg, rgba(255,184,77,0.10), transparent 70%); }
+.med-card.missed { border-left-color: #ff8f6b; }
+.med-card.done { border-left-color: var(--accent); padding: 12px 16px; }
+.med-pill {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.02em; color: var(--ink);
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px;
+}
+.med-window-line {
+  font-family: 'Archivo Expanded','Archivo',sans-serif; font-weight: 800;
+  font-size: 16px; line-height: 1.35; color: var(--ink);
+}
+.med-window-line #medCountdown { color: #ffb84d; }
+.med-oneline { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.med-tick { color: var(--accent); font-weight: 800; }
+.med-foot { color: var(--ink-4); margin-top: 6px; }
+
+/* Dose sheet — symptom taps, sized for one-handed logging */
+.med-sheet-note { font-size: 11.5px; line-height: 1.5; color: var(--ink-4); margin-top: 12px; }
+.med-sym-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.med-sym-label { flex: 0 0 96px; font-size: 12.5px; color: var(--ink-3); font-weight: 600; }
+.med-sym-scale { display: flex; gap: 6px; flex: 1; }
+.med-sym-btn {
+  flex: 1; padding: 10px 4px; font-size: 11.5px; font-weight: 700; cursor: pointer;
+  color: var(--ink-3); background: var(--paper-2);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.med-sym-btn.on { color: #08130d; background: var(--accent); border-color: var(--accent); }

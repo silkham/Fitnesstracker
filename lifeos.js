@@ -117,6 +117,32 @@ function lifeosDayTotals(date) {
     : { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 }
 
+// Task: today's dose. Flips open→done the moment the day is acted on (taken,
+// skipped or missed) — Stride is the source of truth, so no manual dismiss.
+// Returns null unless a medication is actually configured.
+function lifeosMedSignal(hid, m) {
+  if (!m || !m.med_name) return null;
+  const row = typeof medLogFor === 'function' ? medLogFor(todayISO()) : null;
+  const st = row && row.dose_state;
+  const dose = (typeof fmtDoseMg === 'function' && m.med_current_dose_mg != null)
+    ? fmtDoseMg(m.med_current_dose_mg) : '';
+  let detail;
+  if (st === 'taken') detail = 'Taken' + (row.taken_at && typeof medTimeLabel === 'function' ? ' ' + medTimeLabel(row.taken_at) : '');
+  else if (st === 'skipped') detail = 'Skipped today';
+  else if (st === 'missed') detail = 'Missed — do not double up';
+  else detail = 'Fasted, small sip of plain water only';
+
+  return {
+    household_id: hid, app: LIFEOS_APP, key: 'med', kind: 'task',
+    title: st ? `${m.med_name} logged` : `Take ${m.med_name}${dose ? ' · ' + dose : ''}`,
+    detail,
+    value: null, unit: null, trend: null,
+    state: st === 'taken' ? 'good' : 'warn',
+    due: todayISO(), cta_url: LIFEOS_CTA, cta_label: 'Log dose', sort_order: 5,
+    status: st ? 'done' : 'open',
+  };
+}
+
 // Task: pending past-due meal slots for today (respects meal times via
 // missedSlots). Flips to 'done' once nothing is outstanding today.
 function lifeosLogFoodSignal(hid) {
@@ -177,6 +203,7 @@ async function publishToLifeOS() {
 
     const now = new Date().toISOString();
     const rows = [
+      lifeosMedSignal(hid, m),
       lifeosWeightSignal(hid, mid),
       lifeosCaloriesSignal(hid, m),
       lifeosProteinSignal(hid, m),

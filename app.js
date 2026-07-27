@@ -22,6 +22,7 @@ const State = {
   mealWeekStart: null,  // ISO Monday of the meals tab's viewed week
   mealLogViewDate: null,// ISO date shown in the Meals photo-log (default today)
   mealLogs: [],         // meal_logs rows for the active member (last ~30 days)
+  medLogs: [],          // med_log rows for the active member (last ~60 days)
   mealsTab: 'week',
   vaultCategory: 'dinner',
   personalSlots: [],    // meal_slots_personal rows for current user
@@ -52,7 +53,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.15.0';
+const APP_VERSION = 'Stride · v4.15.1';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -363,6 +364,9 @@ async function loadAll() {
     State.mealLogViewDate = todayISO();
     await loadMealLogs();
 
+    // load medication log for the active member (resilient: table may not exist yet)
+    await loadMedLogs();
+
     // load Peloton API-health heartbeat (single row, safe cols only). Resilient.
     await loadPelotonHealth();
 
@@ -461,10 +465,22 @@ function setupRealtime() {
     .on('postgres_changes',
       { event: '*', schema: 'public', table: 'meal_logs', filter: 'household_id=eq.' + State.householdId },
       (payload) => handleRealtime('meal_logs', payload))
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'med_log', filter: 'household_id=eq.' + State.householdId },
+      (payload) => handleRealtime('med_log', payload))
     .subscribe();
 }
 
 function handleRealtime(table, payload) {
+  if (table === 'med_log') {
+    if (payload.eventType === 'DELETE') {
+      State.medLogs = State.medLogs.filter(r => r.id !== payload.old.id);
+    } else if (payload.new && payload.new.member_id === State.activeMemberId) {
+      upsertLocalMedLog(payload.new);
+    }
+    scheduleRealtimeRender();   // same debounce landmine as workouts/meal_logs
+    return;
+  }
   if (table === 'meal_logs') {
     if (payload.eventType === 'DELETE') {
       State.mealLogs = State.mealLogs.filter(r => r.id !== payload.old.id);
@@ -2073,6 +2089,9 @@ function switchScreen(name) {
   const tab = document.querySelector(`.tab[data-screen="${name}"]`); // null for screens not in the bar (e.g. profile)
   if (tab) tab.classList.add('active');
   window.scrollTo(0, 0);
+  // The dose countdown only ticks while Today is on screen: re-render to pick up
+  // a window that closed while you were elsewhere, and clear the interval on exit.
+  if (name === 'today') renderToday(); else stopMedCountdown();
 }
 
 function switchMealTab(name) {
@@ -2367,8 +2386,9 @@ function renderToday() {
   // ---- Today's food — photo log summary (calories + protein vs target) ----
   html += mealTodayCard();
 
-  // Catch-up nudge (missed meals in the last few days) rides at the top.
-  document.getElementById('todayContent').innerHTML = mealNudgeCard() + html;
+  // Medication rides above everything (time-critical), then the catch-up nudge.
+  document.getElementById('todayContent').innerHTML = medCard() + mealNudgeCard() + html;
+  medSyncCountdown();
 }
 
 // Open a meal editor for today, ensuring the meals tab is on the current week first.
@@ -5524,6 +5544,261 @@ function nutritionCard(m) {
     </div>
     <div class="ml-inout"><span>Today in <b>${inK}</b></span><span>burned <b>${outK}</b></span><span>net <b>${inK - outK}</b></span></div>
   </div>`;
+}
+
+// ============================================================
+// MEDICATION (v4.15) — GLP-1 dose log + the 30-minute fasted window
+// ------------------------------------------------------------
+// Stride RECORDS what was taken and shows the data back. It never makes a
+// dosing decision: no suggested dose, no auto-advance up the ladder, no
+// interpretation of symptoms. Escalation is the user's and their prescriber's.
+// The whole feature is invisible until members.med_name is set.
+// ============================================================
+const MED_WINDOW_MIN = 30;      // no food/drink/other oral meds for this long after a dose
+const MED_TITRATION_DAYS = 28;  // minimum time at a level before the next is worth discussing
+const MED_LOG_DAYS = 60;        // history loaded
+const MED_SYMPTOMS = [
+  { key: 'nausea', label: 'Nausea' },
+  { key: 'constipation', label: 'Constipation' },
+  { key: 'reflux', label: 'Reflux' },
+  { key: 'energy', label: 'Energy' },
+];
+const MED_SCALE = ['None', 'Mild', 'Mod', 'Severe'];
+const MED_SCALE_ENERGY = ['Flat', 'Low', 'OK', 'Good'];
+
+let _medLog = null;        // { date } — the day the open sheet is editing
+let _medSymptoms = {};     // staged 0–3 taps, flushed on save
+
+// ---- pure helpers (no DOM, no State) — tested in tests/logic.test.js ----
+
+// Milliseconds left in the fasted window. Absolute timestamps, so a 23:50 dose
+// keeps counting correctly past midnight. Never negative; 0 means closed.
+function medWindowRemainingMs(takenAt, nowMs) {
+  if (!takenAt) return 0;
+  const t = new Date(takenAt).getTime();
+  if (isNaN(t)) return 0;
+  return Math.max(0, t + MED_WINDOW_MIN * 60000 - (nowMs == null ? Date.now() : nowMs));
+}
+function medWindowLabel(ms) {
+  const mins = Math.ceil(ms / 60000);
+  return mins <= 1 ? 'under a minute' : mins + ' more minutes';
+}
+// 1-based day at the current dose level. Rounds the day difference so a DST
+// shift can't knock the count back by one. null if unknown or start is future.
+function medDoseDay(startISO, todayIso) {
+  if (!startISO) return null;
+  const a = new Date(startISO + 'T00:00:00').getTime();
+  const b = new Date((todayIso || todayISO()) + 'T00:00:00').getTime();
+  if (isNaN(a) || isNaN(b) || b < a) return null;
+  return Math.round((b - a) / 86400000) + 1;
+}
+// A FULL 28 days at the level. Deliberately a day conservative vs "day 28".
+// This only ever unlocks a line of text — it never changes a dose.
+function medDoseEligible(startISO, todayIso) {
+  const d = medDoseDay(startISO, todayIso);
+  return d != null && (d - 1) >= MED_TITRATION_DAYS;
+}
+function fmtDoseMg(v) {
+  const n = parseFloat(v);
+  if (isNaN(n)) return '';
+  return (Number.isInteger(n) ? String(n) : String(+n.toFixed(2))) + ' mg';
+}
+
+// ---- data ----
+async function loadMedLogs() {
+  try {
+    const mid = State.activeMemberId || (State.members[0] && State.members[0].id);
+    if (!mid) { State.medLogs = []; return; }
+    const since = isoDateAddDays(todayISO(), -MED_LOG_DAYS);
+    const { data, error } = await State.client
+      .from('med_log')
+      .select('*')
+      .eq('member_id', mid)
+      .gte('log_date', since)
+      .order('log_date', { ascending: false });
+    State.medLogs = error ? [] : (data || []);
+  } catch (e) { State.medLogs = []; }
+}
+function medLogFor(date) {
+  return State.medLogs.find(r => r.log_date === date) || null;
+}
+function upsertLocalMedLog(row) {
+  if (!row) return;
+  const i = State.medLogs.findIndex(r => r.id === row.id ||
+    (r.member_id === row.member_id && r.log_date === row.log_date));
+  if (i >= 0) State.medLogs[i] = row; else State.medLogs.unshift(row);
+}
+
+// ---- Today-screen card ----
+function medTimeLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+// "Day 12 of 28 on 1.5 mg", or the neutral eligibility line. Never a suggestion.
+function medTitrationLine(m) {
+  const day = medDoseDay(m.med_dose_started_on, todayISO());
+  if (day == null) return '';
+  const dose = fmtDoseMg(m.med_current_dose_mg);
+  if (medDoseEligible(m.med_dose_started_on, todayISO())) {
+    return `${day - 1} days on ${dose} · Eligible to discuss the next dose with your prescriber.`;
+  }
+  return `Day ${day} of ${MED_TITRATION_DAYS}${dose ? ' on ' + dose : ''}`;
+}
+
+function medCard() {
+  const m = activeMember();
+  if (!m || !m.med_name) return '';   // nothing renders until a medication is set
+  const today = todayISO();
+  const row = medLogFor(today);
+  const state = row && row.dose_state;
+  const doseStr = fmtDoseMg(row && row.dose_mg != null ? row.dose_mg : m.med_current_dose_mg);
+  const titr = medTitrationLine(m);
+  const name = escapeHtml(m.med_name);
+
+  // 2 — window open. The one state that matters minute to minute.
+  if (state === 'taken') {
+    const remain = medWindowRemainingMs(row.taken_at, Date.now());
+    if (remain > 0) {
+      return `<div class="card med-card window">
+        <div class="card-row" style="margin-bottom:8px;"><span class="eyebrow">${name} · window open</span>${doseStr ? `<span class="med-pill">${doseStr}</span>` : ''}</div>
+        <div class="med-window-line">Nothing to eat or drink for <span id="medCountdown">${medWindowLabel(remain)}</span>.</div>
+        <div class="wc-sub" style="margin-top:6px;">Plain water only — and no other oral medication until the window closes.</div>
+        <div class="tiny med-foot">Taken ${medTimeLabel(row.taken_at)}${titr ? ' · ' + titr : ''}</div>
+      </div>`;
+    }
+    // 3 — taken, window elapsed. Collapsed one-liner.
+    return `<div class="card med-card done tappable" onclick="openMedLogger()">
+      <div class="med-oneline"><span class="med-tick">✓</span><span>${doseStr || name} taken ${medTimeLabel(row.taken_at)}.</span></div>
+      ${titr ? `<div class="tiny med-foot">${titr}</div>` : ''}
+    </div>`;
+  }
+
+  if (state === 'skipped' || state === 'missed') {
+    return `<div class="card med-card missed tappable" onclick="openMedLogger()">
+      <div class="med-oneline"><span>${name} ${state === 'skipped' ? 'skipped' : 'missed'} today.</span></div>
+      <div class="tiny med-foot">Do not double up the next day.${titr ? ' · ' + titr : ''}</div>
+    </div>`;
+  }
+
+  // 1 — not yet taken today.
+  return `<div class="card med-card">
+    <div class="card-row" style="margin-bottom:6px;"><span class="eyebrow">${name}</span>${doseStr ? `<span class="med-pill">${doseStr}</span>` : ''}</div>
+    <div class="wc-title" style="font-size:15px;">Not taken yet today</div>
+    <div class="wc-sub">Fasted — whole, with a small sip of plain water.</div>
+    ${titr ? `<div class="tiny med-foot">${titr}</div>` : ''}
+    <div class="btn-row" style="margin-top:12px;"><button class="btn accent block" onclick="openMedLogger()">Log dose</button></div>
+  </div>`;
+}
+
+// ---- the live countdown: ONE interval, cleared on screen change ----
+let _medTimer = null;
+function stopMedCountdown() {
+  if (_medTimer) { clearInterval(_medTimer); _medTimer = null; }
+}
+// Called at the end of renderToday. Starts only when the window element exists.
+function medSyncCountdown() {
+  stopMedCountdown();
+  if (document.getElementById('medCountdown')) _medTimer = setInterval(medTickCountdown, 1000);
+}
+// Ticks the text only — a full renderAll() per second would be absurd. The one
+// re-render happens when the window closes and the card changes state.
+function medTickCountdown() {
+  const el = document.getElementById('medCountdown');
+  if (!el) { stopMedCountdown(); return; }
+  const row = medLogFor(todayISO());
+  const remain = medWindowRemainingMs(row && row.taken_at, Date.now());
+  if (remain <= 0) { stopMedCountdown(); renderToday(); return; }
+  el.textContent = medWindowLabel(remain);
+}
+
+// ---- dose sheet ----
+function medSymptomRowHtml(s, value) {
+  const scale = s.key === 'energy' ? MED_SCALE_ENERGY : MED_SCALE;
+  const btns = scale.map((lbl, i) =>
+    `<button type="button" class="med-sym-btn ${value === i ? 'on' : ''}" data-sym="${s.key}" data-val="${i}" onclick="setMedSymptom('${s.key}',${i})">${lbl}</button>`
+  ).join('');
+  return `<div class="med-sym-row"><div class="med-sym-label">${s.label}</div><div class="med-sym-scale">${btns}</div></div>`;
+}
+function setMedSymptom(key, val) {
+  _medSymptoms[key] = val;
+  document.querySelectorAll('.med-sym-btn[data-sym="' + key + '"]').forEach(b => {
+    b.classList.toggle('on', parseInt(b.dataset.val, 10) === val);
+  });
+}
+
+function openMedLogger(dateISO) {
+  const m = activeMember();
+  if (!m) return;
+  const date = dateISO || todayISO();
+  const row = medLogFor(date);
+  _medLog = { date };
+  _medSymptoms = {};
+  MED_SYMPTOMS.forEach(s => { _medSymptoms[s.key] = (row && row[s.key] != null) ? +row[s.key] : null; });
+
+  const dose = (row && row.dose_mg != null) ? row.dose_mg : (m.med_current_dose_mg != null ? m.med_current_dose_mg : '');
+  const t = (row && row.taken_at) ? new Date(row.taken_at) : new Date();
+  const hhmm = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+
+  const html = `
+    <div class="field input-row">
+      <div><label class="field-label">Dose (mg)</label><input class="input" id="medDose" type="number" inputmode="decimal" step="0.5" value="${escapeHtml(String(dose))}"></div>
+      <div><label class="field-label">Time taken</label><input class="input" id="medTime" type="time" value="${hhmm}"></div>
+    </div>
+    <div class="btn-row" style="margin-top:4px;gap:8px;">
+      <button class="btn accent block" onclick="saveMedDose('taken')">Taken</button>
+      <button class="btn ghost block" onclick="saveMedDose('skipped')">Skipped</button>
+    </div>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="saveMedDose('missed')">Missed this dose</button>
+    <div class="med-sheet-note">Taken whole, on an empty stomach after fasting at least 8 hours, with a small sip of plain water. Then nothing to eat or drink other than water, and no other oral medication, for at least 30 minutes.</div>
+
+    <div class="section-head" style="margin-top:18px;"><span class="t">How you're feeling</span></div>
+    ${MED_SYMPTOMS.map(s => medSymptomRowHtml(s, _medSymptoms[s.key])).join('')}
+    <div class="field" style="margin-top:10px;">
+      <label class="field-label">Note (optional)</label>
+      <textarea class="input" id="medNote" rows="2" placeholder="anything worth remembering">${escapeHtml((row && row.note) || '')}</textarea>
+    </div>
+    <div class="tiny med-sheet-note">Symptoms save with whichever button you tap above.</div>
+  `;
+  openSheet(`${escapeHtml(m.med_name || 'Dose')} · ${date === todayISO() ? 'Today' : formatHistoryDate(date)}`, html);
+}
+
+// Combine the sheet's date + time field into a real timestamp (local clock).
+function medTimestampFor(dateISO, hhmm) {
+  const [y, mo, d] = String(dateISO).split('-').map(Number);
+  const [h, mi] = String(hhmm || '00:00').split(':').map(Number);
+  const dt = new Date(y, (mo || 1) - 1, d || 1, h || 0, mi || 0, 0, 0);
+  return isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();
+}
+
+async function saveMedDose(state) {
+  const m = activeMember();
+  if (!m || !_medLog) return;
+  const date = _medLog.date;
+  const doseEl = document.getElementById('medDose');
+  const dose = doseEl ? parseFloat(doseEl.value) : NaN;
+  const timeEl = document.getElementById('medTime');
+  const noteEl = document.getElementById('medNote');
+  const note = noteEl ? noteEl.value.trim() : '';
+  const row = {
+    household_id: State.householdId, member_id: m.id, log_date: date,
+    dose_mg: (state === 'taken' && !isNaN(dose)) ? dose : null,
+    dose_state: state,
+    taken_at: state === 'taken' ? medTimestampFor(date, timeEl && timeEl.value) : null,
+    nausea: _medSymptoms.nausea, constipation: _medSymptoms.constipation,
+    reflux: _medSymptoms.reflux, energy: _medSymptoms.energy,
+    note: note || null,
+    updated_at: new Date().toISOString(),
+  };
+  closeSheet();
+  setSync('syncing', 'Saving');
+  const { data, error } = await State.client.from('med_log')
+    .upsert(row, { onConflict: 'member_id,log_date' }).select().single();
+  if (error) { setSync('offline', 'Error'); toast('Save failed'); return; }
+  upsertLocalMedLog(data);
+  setSync('synced', 'Saved');
+  toast(state === 'taken' ? 'Dose logged' : (state === 'skipped' ? 'Marked skipped' : 'Marked missed'));
+  renderAll();
 }
 
 function openMealUrl(enc) {

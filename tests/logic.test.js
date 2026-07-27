@@ -10,6 +10,7 @@
 // ============================================================
 
 const SRC_APP = readFile('app.js');
+const SRC_LIFEOS = readFile('lifeos.js');
 
 // Slice `function NAME(...) { ... }` out of src by brace matching. Loud on miss.
 function extractFn(src, name) {
@@ -31,8 +32,11 @@ function extractConst(src, name) {
   return m[0];
 }
 
-const CONSTS = [];
-const FNS = ['calorieBand', 'proteinBand', 'bandNote'];
+const CONSTS = ['MED_WINDOW_MIN', 'MED_TITRATION_DAYS'];
+const FNS = [
+  'calorieBand', 'proteinBand', 'bandNote',
+  'medWindowRemainingMs', 'medWindowLabel', 'medDoseDay', 'medDoseEligible',
+];
 const src = CONSTS.map(c => extractConst(SRC_APP, c))
   .concat(FNS.map(f => extractFn(SRC_APP, f)))
   .join('\n');
@@ -103,6 +107,66 @@ eq(A.bandNote(A.calorieBand(2400, 2000, 1600), '', true), '400 over target', 'ov
 eq(A.bandNote(A.proteinBand(100, 150, 120), 'g', true), '20g under floor', 'protein copy carries its unit');
 eq(A.bandNote(A.proteinBand(160, 150, 120), 'g', true), 'protein target met', 'hitting protein target says so');
 eq(A.bandNote(A.calorieBand(1200, null, null), '', true), '', 'neutral band renders no note');
+
+// ============================================================
+// 4) The 30-minute fasted window — absolute clock, crosses midnight
+// ============================================================
+group('medWindowRemainingMs');
+const MIN = 60000;
+// Dose at 23:50 LOCAL, checked at 00:05 the NEXT day: 15 minutes still to run.
+const lateDose = new Date(2026, 6, 27, 23, 50, 0).toISOString();
+const justAfterMidnight = new Date(2026, 6, 28, 0, 5, 0).getTime();
+eq(A.medWindowRemainingMs(lateDose, justAfterMidnight), 15 * MIN, 'window survives the midnight boundary');
+eq(A.medWindowLabel(A.medWindowRemainingMs(lateDose, justAfterMidnight)), '15 more minutes', 'countdown copy across midnight');
+// Same dose, checked at 00:21 next day: the window has closed.
+eq(A.medWindowRemainingMs(lateDose, new Date(2026, 6, 28, 0, 21, 0).getTime()), 0, 'window closed after midnight');
+// Exactly on the boundary counts as closed, never negative.
+eq(A.medWindowRemainingMs(lateDose, new Date(2026, 6, 28, 0, 20, 0).getTime()), 0, 'exactly 30 min in → closed');
+// Ordinary same-day dose.
+const morningDose = new Date(2026, 6, 27, 7, 12, 0).toISOString();
+eq(A.medWindowRemainingMs(morningDose, new Date(2026, 6, 27, 7, 30, 0).getTime()), 12 * MIN, 'same-day mid-window');
+eq(A.medWindowRemainingMs(morningDose, new Date(2026, 6, 27, 9, 0, 0).getTime()), 0, 'long past → closed');
+// A dose logged with a time in the near future must not go negative or overrun.
+eq(A.medWindowRemainingMs(morningDose, new Date(2026, 6, 27, 7, 12, 0).getTime()), 30 * MIN, 'at the moment of dosing → full window');
+// Missing / unparseable input is closed, never a live countdown.
+eq(A.medWindowRemainingMs(null, Date.now()), 0, 'no taken_at → no window');
+eq(A.medWindowRemainingMs('', Date.now()), 0, 'empty taken_at → no window');
+eq(A.medWindowRemainingMs('not a date', Date.now()), 0, 'unparseable taken_at → no window');
+
+group('medWindowLabel');
+eq(A.medWindowLabel(30 * MIN), '30 more minutes', 'full window');
+eq(A.medWindowLabel(90000), '2 more minutes', 'rounds up to the whole minute');
+eq(A.medWindowLabel(30000), 'under a minute', 'last minute reads as under a minute');
+eq(A.medWindowLabel(0), 'under a minute', 'zero never renders a negative');
+
+// ============================================================
+// 5) Titration day count — informational only, never a dose decision
+// ============================================================
+group('medDoseDay / medDoseEligible');
+eq(A.medDoseDay('2026-07-01', '2026-07-01'), 1, 'the first day on a dose is day 1');
+eq(A.medDoseDay('2026-07-01', '2026-07-02'), 2, 'the next day is day 2');
+eq(A.medDoseDay('2026-07-01', '2026-07-28'), 28, 'day 28 = 27 full days elapsed');
+eq(A.medDoseDay('2026-07-01', '2026-07-29'), 29, 'day 29 = 28 full days elapsed');
+// Across a month boundary and a 31-day month.
+eq(A.medDoseDay('2026-01-31', '2026-02-01'), 2, 'counts across a month boundary');
+eq(A.medDoseDay('2026-02-01', '2026-03-01'), 29, 'counts across a 28-day February');
+eq(A.medDoseDay(null, '2026-07-28'), null, 'no dose start date → no day count');
+eq(A.medDoseDay('2026-07-28', '2026-07-01'), null, 'a future start date does not count backwards');
+// Eligibility requires a FULL 28 days at the level — conservative by a day.
+eq(A.medDoseEligible('2026-07-01', '2026-07-27'), false, '26 days elapsed → not yet');
+eq(A.medDoseEligible('2026-07-01', '2026-07-28'), false, '27 days elapsed → still not a full month');
+eq(A.medDoseEligible('2026-07-01', '2026-07-29'), true, '28 full days elapsed → eligible to discuss');
+eq(A.medDoseEligible('2026-07-01', '2026-09-01'), true, 'well past 28 days stays eligible');
+eq(A.medDoseEligible(null, '2026-07-29'), false, 'no dose start date → never eligible');
+
+// ============================================================
+// 6) LifeOS calorie signal keeps the floor semantics
+// ============================================================
+group('lifeos protein signal wiring');
+eq(/sort_order: 25/.test(SRC_LIFEOS), true, 'protein-today publishes at sort_order 25');
+eq(/'protein-today'/.test(SRC_LIFEOS), true, 'protein-today key is published');
+eq(/lifeosProteinSignal\(hid, m\)/.test(SRC_LIFEOS), true, 'protein signal is wired into publishToLifeOS');
+eq(/key: 'med'/.test(SRC_LIFEOS), true, 'med adherence signal is published');
 
 print('\n' + (fail ? 'FAILED' : 'OK') + ' — ' + pass + ' passed, ' + fail + ' failed');
 if (fail) throw new Error(fail + ' test(s) failed');
