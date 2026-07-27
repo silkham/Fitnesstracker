@@ -53,7 +53,7 @@ const State = {
 const CFG_KEY = 'household_supabase_config_v1';
 const DEVICE_MEMBER_KEY = 'household_device_member_v1';
 // App version — shown on the You page. Bump the build each deploy to track updates.
-const APP_VERSION = 'Stride · v4.15.1';
+const APP_VERSION = 'Stride · v4.15.2';
 
 // Baked-in defaults so no device ever has to paste config.
 // The anon key is public by design — data is protected by Supabase Row Level Security.
@@ -2606,6 +2606,31 @@ function metricBars(vals, tint, height) {
   }).join('');
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block;">${bars}</svg>`;
 }
+// Two series on ONE time axis, each normalised to its own min/max so shapes can
+// be compared when the units can't be. Inputs: [{date:'YYYY-MM-DD', v:Number}].
+function dualNormalisedChart(sa, sb, colA, colB, height) {
+  if (!sa || !sb || sa.length < 2 || sb.length < 2) return '';
+  const h = height || 112, w = 320, px = 6, py = 10;
+  const t = (d) => new Date(d + 'T00:00:00').getTime();
+  const times = sa.concat(sb).map(p => t(p.date));
+  const t0 = Math.min(...times), t1 = Math.max(...times);
+  const tx = (ms) => px + ((ms - t0) / ((t1 - t0) || 1)) * (w - px * 2);
+  const pts = (s) => {
+    const vs = s.map(p => p.v);
+    const lo = Math.min(...vs), hi = Math.max(...vs), range = (hi - lo) || 1;
+    return s.map(p => [tx(t(p.date)), h - py - ((p.v - lo) / range) * (h - py * 2)]);
+  };
+  const d = (ps) => ps.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const pa = pts(sa), pb = pts(sb);
+  const la = pa[pa.length - 1], lb = pb[pb.length - 1];
+  return `<svg class="spark-svg" style="height:${h}px;" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path d="${d(pa)}" style="fill:none;stroke:${colA};stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"/>
+    <path d="${d(pb)}" style="fill:none;stroke:${colB};stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 4"/>
+    <circle cx="${la[0].toFixed(1)}" cy="${la[1].toFixed(1)}" r="4" style="fill:${colA}"/>
+    <circle cx="${lb[0].toFixed(1)}" cy="${lb[1].toFixed(1)}" r="4" style="fill:${colB}"/>
+  </svg>`;
+}
+
 function zoneBarHtml(zones) {
   const colors = ['#3a4252', '#3a6ea5', 'var(--accent)', '#e0a83d', '#e0553d'];
   const txt = ['var(--ink-3)', '#dbeafe', '#042417', '#3a2607', '#3a0f07'];
@@ -2724,6 +2749,7 @@ function strengthTrainingHtml(m) {
       ${metricSparkline(series.map(p => p.e1rm), '#5cc6ff', 68)}
       <div class="metric-legend"><span>${first.e1rm.toFixed(0)}kg · ${formatHistoryDate(first.date)}</span><span>now</span></div>
     </div>`;
+    h += leanMassCard(m, lift);
   } else {
     const last = series[series.length - 1];
     h += `<div class="card">
@@ -2808,11 +2834,15 @@ function openWeightEntryFor(dateISO) {
 // RENDER · PROGRESS (trajectory to goal + training insights)
 // ============================================================
 // Project weight to goal using the recent (≤8 week) trend.
-function computeProjection(weights, goal) {
+// `doseStartedOn` (members.med_dose_started_on) marks a titration step: a linear
+// extrapolation across a dose change is not trustworthy, so we flag it and the
+// caller suppresses the projected date rather than showing a confident wrong one.
+function computeProjection(weights, goal, doseStartedOn) {
   if (!weights || weights.length < 2 || goal == null) return null;
   const sorted = weights.slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at)); // oldest→newest
   const newest = sorted[sorted.length - 1];
   const cutoff = isoDateAddDays(newest.logged_at, -56);
+  const titrating = !!(doseStartedOn && doseStartedOn >= cutoff);
   const win = sorted.filter(w => w.logged_at >= cutoff);
   const a = win[0], b = win[win.length - 1];
   const days = Math.max(1, (new Date(b.logged_at + 'T00:00:00') - new Date(a.logged_at + 'T00:00:00')) / 86400000);
@@ -2826,7 +2856,7 @@ function computeProjection(weights, goal) {
     goalDate = new Date(Date.now() + weeksToGoal * 7 * 86400000);
     onTrack = true;
   }
-  return { ratePerWeek, latest, toGo, weeksToGoal, goalDate, onTrack };
+  return { ratePerWeek, latest, toGo, weeksToGoal, goalDate, onTrack, titrating };
 }
 
 function fmtGoalDate(d) {
@@ -2867,6 +2897,58 @@ function renderTrajectoryChart(weights, goal, proj) {
   </svg>`;
 }
 
+// Waist trend — the better fat-loss signal when body composition is shifting.
+// Entirely optional: nothing renders until there are two measurements.
+function waistCard(m) {
+  const rows = State.weights
+    .filter(w => w.member_id === m.id && w.waist_cm != null)
+    .slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at));
+  if (rows.length < 2) return '';
+  const vals = rows.map(r => parseFloat(r.waist_cm));
+  const first = vals[0], last = vals[vals.length - 1], delta = last - first;
+  return `<div class="card">
+    <div class="card-row" style="margin-bottom:2px;">
+      <span class="eyebrow">Waist</span>
+      <span class="tiny" style="font-weight:700;color:${delta <= 0 ? 'var(--accent)' : 'var(--ink-3)'};">${delta <= 0 ? '−' : '+'}${Math.abs(delta).toFixed(1)} cm</span>
+    </div>
+    <div style="font-family:'Archivo Expanded','Archivo',sans-serif;font-size:26px;font-weight:800;color:var(--ink);line-height:1;margin:4px 0 2px;">${last.toFixed(1)}<span style="font-size:12px;color:var(--ink-3);font-weight:600;">cm</span></div>
+    ${metricSparkline(vals, '#b3a0ff', 68)}
+    <div class="metric-legend"><span>${first.toFixed(1)}cm · ${formatHistoryDate(rows[0].logged_at)}</span><span>now</span></div>
+  </div>`;
+}
+
+// Lean-mass retention: bodyweight against estimated 1RM for the selected lift,
+// each normalised to its own range so the SHAPES can be compared. This is a
+// PROXY — weight falling while 1RM holds is the pattern worth wanting. It is
+// not a body-composition measurement.
+function leanMassCard(m, lift) {
+  if (!lift) return '';
+  const sets = memberSets(m);
+  const since = isoDateAddDays(todayISO(), -120);
+  const rm = oneRmSeries(sets, lift)
+    .filter(p => p.date >= since)
+    .map(p => ({ date: p.date, v: p.e1rm }));
+  const ws = State.weights
+    .filter(w => w.member_id === m.id && w.logged_at >= since && w.weight_kg != null)
+    .slice().sort((a, b) => a.logged_at.localeCompare(b.logged_at))
+    .map(w => ({ date: w.logged_at, v: parseFloat(w.weight_kg) }));
+  if (rm.length < 2 || ws.length < 2) return '';
+  const wDelta = ws[ws.length - 1].v - ws[0].v;
+  const rDelta = rm[rm.length - 1].v - rm[0].v;
+  return `<div class="card">
+    <div class="card-row" style="margin-bottom:8px;">
+      <span class="eyebrow">Lean-mass retention</span>
+      <span class="tiny" style="color:var(--ink-4);">last 120 days</span>
+    </div>
+    ${dualNormalisedChart(ws, rm, 'var(--accent)', '#5cc6ff')}
+    <div class="lm-legend">
+      <span><i style="background:var(--accent);"></i>Bodyweight ${wDelta <= 0 ? '−' : '+'}${Math.abs(wDelta).toFixed(1)}kg</span>
+      <span><i style="background:#5cc6ff;" class="dash"></i>${escapeHtml(lift)} 1RM ${rDelta >= 0 ? '+' : '−'}${Math.abs(rDelta).toFixed(1)}kg</span>
+    </div>
+    <div class="tiny" style="color:var(--ink-4);margin-top:8px;line-height:1.5;">Each line is scaled to its own range, so only the shapes compare. Weight falling while 1RM holds is the pattern to look for. This is a proxy from your logged lifts — not a DXA scan or any other body-composition measurement.</div>
+  </div>`;
+}
+
 // Merged Progress screen: weight trajectory + goal + training (ride/strength) + weigh-in history.
 function renderProgress() {
   const m = activeMember();
@@ -2876,11 +2958,15 @@ function renderProgress() {
   const goal = m.weight_goal_kg ? parseFloat(m.weight_goal_kg) : null;
   const startVal = m.weight_start_kg ? parseFloat(m.weight_start_kg) : null;
   const latest = myWeights[0] ? parseFloat(myWeights[0].weight_kg) : null;
-  const proj = computeProjection(myWeights, goal);
+  const proj = computeProjection(myWeights, goal, m.med_dose_started_on);
+  // A dose change inside the 56-day window makes the extrapolation unreliable —
+  // show no projected date at all rather than a confident wrong one.
+  const projShown = (proj && proj.titrating) ? null : proj;
 
   let sub = 'Your journey';
   if (!myWeights.length) sub = 'Log a weigh-in to begin';
   else if (latest != null && goal != null && latest <= goal) sub = 'goal reached 🎉';
+  else if (proj && proj.titrating) sub = 'titrating · projection paused';
   else if (proj && proj.onTrack && proj.goalDate) sub = `on track · goal by ${fmtGoalDate(proj.goalDate)}`;
   else if (goal != null) sub = 'keep going · log to project';
   const subEl = document.getElementById('progressSub');
@@ -2916,13 +3002,14 @@ function renderProgress() {
           <div class="tiny" style="color:var(--ink-4);">${toGo > 0 ? toGo.toFixed(1) + ' kg to go' : 'goal reached'}</div>
         </div>
       </div>
-      ${renderTrajectoryChart(myWeights, goal, proj)}
+      ${renderTrajectoryChart(myWeights, goal, projShown)}
       <div class="goal-row"><span>${startVal != null ? startVal.toFixed(0) + ' start' : ''}</span><span>today</span><span>${goal.toFixed(0)} goal</span></div>
+      ${proj && proj.titrating ? `<div class="proj-caveat">Titrating — the dose changed inside this window, so the trend can't be extrapolated. No goal date shown.</div>` : ''}
     </div>`;
 
     const lostStr = (startVal != null) ? (startVal - latest).toFixed(1) : null;
     html += `<div class="stat-grid">
-      <div class="stat-tile"><div class="stat-num">${proj && proj.weeksToGoal != null ? '~' + Math.round(proj.weeksToGoal) + '<span class="frac"> wks</span>' : '—'}</div><div class="stat-label">to goal at this pace</div></div>
+      <div class="stat-tile"><div class="stat-num">${projShown && projShown.weeksToGoal != null ? '~' + Math.round(projShown.weeksToGoal) + '<span class="frac"> wks</span>' : '—'}</div><div class="stat-label">${proj && proj.titrating ? 'projection paused' : 'to goal at this pace'}</div></div>
       ${lostStr != null ? `<div class="stat-tile"><div class="stat-num"><span class="accent">${lostStr}</span><span class="frac">kg</span></div><div class="stat-label">lost so far</div></div>` : ''}
     </div>`;
   } else {
@@ -2937,6 +3024,9 @@ function renderProgress() {
   }
 
   html += `<button class="btn accent block" style="margin:4px 0 18px;" onclick="openWeightEntry()">Log today's weight</button>`;
+
+  // Waist — optional second trend; silent until there are two measurements.
+  html += waistCard(m);
 
   // Training (ride / strength toggle) + shared zone + stat row
   html += trainingSectionHtml(m);
@@ -3533,6 +3623,10 @@ function openWeightEntry(dateISO) {
         <span style="padding:0 14px;color:var(--ink-3);font-size:13px;">kg</span>
       </div>
     </div>
+    <div class="field">
+      <label class="field-label">Waist (cm) · optional</label>
+      <input class="input" id="wWaist" type="number" inputmode="decimal" step="0.5" placeholder="leave blank to skip" value="${existing && existing.waist_cm != null ? existing.waist_cm : ''}">
+    </div>
     <div class="btn-row">
       <button class="btn primary block" onclick="saveWeight()">${existing ? 'Update' : 'Save'}</button>
     </div>
@@ -3553,13 +3647,20 @@ async function saveWeight() {
   const m = activeMember();
   const date = _weightEntryDate || todayISO();
   const weight_kg = parseFloat(document.getElementById('wKg').textContent);
+  const waistEl = document.getElementById('wWaist');
+  const waist = waistEl ? parseFloat(waistEl.value) : NaN;
   closeSheet();
   setSync('syncing','Saving');
-  const { data, error } = await State.client
-    .from('weight_entries')
-    .upsert({ household_id: State.householdId, member_id: m.id, logged_at: date, weight_kg }, { onConflict: 'member_id,logged_at' })
-    .select()
-    .single();
+  const payload = { household_id: State.householdId, member_id: m.id, logged_at: date, weight_kg, waist_cm: isNaN(waist) ? null : waist };
+  const upsert = () => State.client.from('weight_entries')
+    .upsert(payload, { onConflict: 'member_id,logged_at' }).select().single();
+  let { data, error } = await upsert();
+  // Pre-phase-11 databases have no waist_cm column — never let an optional field
+  // block a weigh-in. Drop it and save the weight anyway.
+  if (error && /waist_cm/.test(error.message || '')) {
+    delete payload.waist_cm;
+    ({ data, error } = await upsert());
+  }
   if (error) { toast('Failed'); setSync('offline','Error'); return; }
   const idx = State.weights.findIndex(w => w.id === data.id);
   if (idx >= 0) State.weights[idx] = data;

@@ -36,6 +36,7 @@ const CONSTS = ['MED_WINDOW_MIN', 'MED_TITRATION_DAYS'];
 const FNS = [
   'calorieBand', 'proteinBand', 'bandNote',
   'medWindowRemainingMs', 'medWindowLabel', 'medDoseDay', 'medDoseEligible',
+  'isoDateAddDays', 'computeProjection',
 ];
 const src = CONSTS.map(c => extractConst(SRC_APP, c))
   .concat(FNS.map(f => extractFn(SRC_APP, f)))
@@ -160,7 +161,25 @@ eq(A.medDoseEligible('2026-07-01', '2026-09-01'), true, 'well past 28 days stays
 eq(A.medDoseEligible(null, '2026-07-29'), false, 'no dose start date → never eligible');
 
 // ============================================================
-// 6) LifeOS calorie signal keeps the floor semantics
+// 6) Projection is suppressed across a dose change
+// ============================================================
+group('computeProjection · titration caveat');
+const W = [
+  { logged_at: '2026-06-01', weight_kg: 100 },
+  { logged_at: '2026-06-15', weight_kg: 99 },
+  { logged_at: '2026-07-01', weight_kg: 98 },
+  { logged_at: '2026-07-20', weight_kg: 97 },   // newest → window is 2026-05-25 onward
+];
+eq(A.computeProjection(W, 90, null).titrating, false, 'no medication → projection as before');
+eq(A.computeProjection(W, 90, undefined).titrating, false, 'no dose date → projection as before');
+eq(A.computeProjection(W, 90, '2026-07-01').titrating, true, 'dose changed inside the window → unreliable');
+eq(A.computeProjection(W, 90, '2026-05-25').titrating, true, 'dose change on the window edge counts');
+eq(A.computeProjection(W, 90, '2026-03-01').titrating, false, 'dose change long before the window is fine');
+eq(A.computeProjection(W, 90, null).goalDate != null, true, 'a clean window still produces a goal date');
+eq(A.computeProjection(W, 90, '2026-07-01').goalDate != null, true, 'the date is computed but the caller suppresses it');
+
+// ============================================================
+// 7) LifeOS calorie signal keeps the floor semantics
 // ============================================================
 group('lifeos protein signal wiring');
 eq(/sort_order: 25/.test(SRC_LIFEOS), true, 'protein-today publishes at sort_order 25');
